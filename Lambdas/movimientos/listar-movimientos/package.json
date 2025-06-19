@@ -1,0 +1,9 @@
+{
+  "name": "listar-movimientos",
+  "version": "1.0.0",
+  "description": "Lambda para listar movimientos de saldo",
+  "main": "index.js",
+  "dependencies": {
+    "mysql2": "^3.6.0"
+  }
+} 
