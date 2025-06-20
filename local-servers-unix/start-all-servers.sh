@@ -14,6 +14,7 @@ echo "Iniciando servidores..."
 echo "- API Server (puerto 3000)"
 echo "- Email Server (puerto 3001)"
 echo "- Pomelo Mock (puerto 3002)"
+echo "- Settlements Server (puerto 3003)"
 echo
 
 # Iniciar servidores en background
@@ -29,11 +30,16 @@ echo "Iniciando Pomelo Mock..."
 npm run start:pomelo &
 POMELO_PID=$!
 
+echo "Iniciando Settlements Server..."
+npm run start:settlements &
+SETTLEMENTS_PID=$!
+
 echo
 echo "Servidores iniciados con PIDs:"
 echo "- API Server: $API_PID"
 echo "- Email Server: $EMAIL_PID"
 echo "- Pomelo Mock: $POMELO_PID"
+echo "- Settlements Server: $SETTLEMENTS_PID"
 echo
 echo "Presiona Ctrl+C para detener todos los servidores..."
 
@@ -44,6 +50,7 @@ cleanup() {
     kill $API_PID 2>/dev/null
     kill $EMAIL_PID 2>/dev/null
     kill $POMELO_PID 2>/dev/null
+    kill $SETTLEMENTS_PID 2>/dev/null
     echo "Servidores detenidos."
     exit 0
 }

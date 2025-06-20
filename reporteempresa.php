@@ -134,12 +134,26 @@ $stmt->execute();
 $result = $stmt->get_result();
 if ($row = $result->fetch_assoc()) {
     $empresaNombre = $row["NOMBRE_EMPRESA"];
-    $saldoInicial = $row["MONTO_MAXIMO"];
     $numeroTarjetas = $row["NUMERO_TARJETAS"];
+    $montoMaximoOriginal = $row["MONTO_MAXIMO"]; // Almacenar para uso posterior
 } else {
     die("Empresa no encontrada.");
 }
 $stmt->close();
+
+// Obtener el saldo real desde empresas_movimientos
+$stmt_mov = $conn->prepare("SELECT total_monto FROM empresas_movimientos WHERE id_empresa = ? ORDER BY fecha_movimiento DESC, id DESC LIMIT 1");
+$stmt_mov->bind_param("i", $idEmpresa);
+$stmt_mov->execute();
+$result_mov = $stmt_mov->get_result();
+if ($result_mov->num_rows > 0) {
+    $row_mov = $result_mov->fetch_assoc();
+    $saldoInicial = $row_mov["total_monto"];
+} else {
+    // Si no hay movimientos, usar el MONTO_MAXIMO como respaldo
+    $saldoInicial = isset($montoMaximoOriginal) ? $montoMaximoOriginal : 0;
+}
+$stmt_mov->close();
 
 // Administrador
 $sqlAdmin = "SELECT nombre FROM administradores WHERE idEmpresa = ? ORDER BY id ASC LIMIT 1";
@@ -177,6 +191,76 @@ $accountsIn = implode(",", $accounts);
 $fecha_inicio = isset($_GET['fecha_inicio']) ? $_GET['fecha_inicio'] : '';
 $fecha_fin = isset($_GET['fecha_fin']) ? $_GET['fecha_fin'] : '';
 
+// ================== FILTRO DE EMPRESA PARA BALANCE DE CUENTA ==================
+$empresa_filtro = isset($_GET['empresa_filtro']) ? $_GET['empresa_filtro'] : $idEmpresa;
+
+// Si se selecciona una empresa diferente, actualizar el ID de empresa para los cálculos
+if ($empresa_filtro != $idEmpresa) {
+    $idEmpresa = $empresa_filtro;
+    
+    // Recalcular datos de empresa con la nueva selección
+    $stmt = $conn->prepare("SELECT NOMBRE_EMPRESA, MONTO_MAXIMO, NUMERO_TARJETAS FROM empresas WHERE ID_EMPRESA = ?");
+    $stmt->bind_param("i", $idEmpresa);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($row = $result->fetch_assoc()) {
+        $empresaNombre = $row["NOMBRE_EMPRESA"];
+        $numeroTarjetas = $row["NUMERO_TARJETAS"];
+        $montoMaximoOriginal = $row["MONTO_MAXIMO"]; // Almacenar para uso posterior
+    } else {
+        die("Empresa no encontrada.");
+    }
+    $stmt->close();
+    
+    // Obtener el saldo real desde empresas_movimientos para la nueva empresa
+    $stmt_mov = $conn->prepare("SELECT total_monto FROM empresas_movimientos WHERE id_empresa = ? ORDER BY fecha_movimiento DESC, id DESC LIMIT 1");
+    $stmt_mov->bind_param("i", $idEmpresa);
+    $stmt_mov->execute();
+    $result_mov = $stmt_mov->get_result();
+    if ($result_mov->num_rows > 0) {
+        $row_mov = $result_mov->fetch_assoc();
+        $saldoInicial = $row_mov["total_monto"];
+    } else {
+        // Si no hay movimientos, usar el MONTO_MAXIMO como respaldo
+        $saldoInicial = isset($montoMaximoOriginal) ? $montoMaximoOriginal : 0;
+    }
+    $stmt_mov->close();
+    
+    // Recalcular administrador
+    $sqlAdmin = "SELECT nombre FROM administradores WHERE idEmpresa = ? ORDER BY id ASC LIMIT 1";
+    $stmt = $conn->prepare($sqlAdmin);
+    $stmt->bind_param("i", $idEmpresa);
+    $stmt->execute();
+    $stmt->bind_result($adminNombre);
+    $stmt->fetch();
+    $stmt->close();
+    
+    // Recalcular cuentas relacionadas
+    $accounts = [];
+    $stmt = $conn->prepare("SELECT id_account FROM user WHERE id_empresa = ?");
+    $stmt->bind_param("i", $idEmpresa);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    while ($row = $result->fetch_assoc()) {
+        $accounts[] = "'" . $row["id_account"] . "'";
+        ++$counttarjetasusadas;
+    }
+    $stmt->close();
+    
+    if (count($accounts) === 0) {
+        die("No hay cuentas relacionadas para la empresa seleccionada.");
+    }
+    $accountsIn = implode(",", $accounts);
+    
+    // Reinicializar variables para recalcular movimientos
+    $saldoInicial = 0;
+    $depositos = 0;
+    $asignaciones = 0;
+    $retiros = 0;
+    $retiroscompras = 0;
+    $retiroscomprassolo = 0;
+}
+
 // ================== CONSULTA DE MOVIMIENTOS (NUEVO CÓDIGO LOCAL) ==================
 // Comentar la consulta de producción y dejar la nueva con filtro de fechas
 /*
@@ -206,6 +290,12 @@ $result = $conn->query($sqlMovimientos);
 $saldoInicialt=0;
 $tsaldo="";
 
+// Reinicializar variables para el cálculo de movimientos
+$depositos_act = 0;
+$asignaciones_act = 0;
+$retiros_act = 0;
+$retiroscompras_act = 0;
+
 while ($row = $result->fetch_assoc()) {
     $entry = $row["entry_type"];
     $process = $row["process_type"];
@@ -215,25 +305,25 @@ while ($row = $result->fetch_assoc()) {
     $monto = floatval($row["monto"]);
 
     if ($entry === "CREDIT" && $process === "ORIGINAL" && $status == "APPROVED") {
-      $depositos += $monto;
+      $depositos_act += $monto;
       $depositosolo = $monto;
   } elseif ($entry === "CREDIT" && $process !== "ORIGINAL" && $status == "APPROVED") {
-      $asignaciones += $monto;
+      $asignaciones_act += $monto;
   } elseif ($entry === "DEBIT" && $type === "MANUAL_MOVEMENT" && $status == "APPROVED") {
-      $retiros += $monto;
+      $retiros_act += $monto;
       $retirossolo = $monto;
   } elseif ($entry === "DEBIT" && $type !== "MANUAL_MOVEMENT" && $status == "APPROVED") {
-      $retiroscompras += $monto;
+      $retiroscompras_act += $monto;
       $retiroscomprassolo = $monto;
   }
 
     //$saldoinit = $saldoInicialt - $asignaciones - $retiros;
-    $saldoinit = $depositos - $asignaciones - $retiros - $retiroscompras;
+    $saldoinit = $depositos_act - $asignaciones_act - $retiros_act - $retiroscompras_act;
 
     // FILTRO POR COLUMNA (inline)
     $mostrar_fila = true;
     if (isset($_GET['saldo_inicial']) && $_GET['saldo_inicial'] !== '' && stripos((string)$saldoInicialt, $_GET['saldo_inicial']) === false) $mostrar_fila = false;
-    if (isset($_GET['asignaciones']) && $_GET['asignaciones'] !== '' && stripos((string)$asignaciones, $_GET['asignaciones']) === false) $mostrar_fila = false;
+    if (isset($_GET['asignaciones']) && $_GET['asignaciones'] !== '' && stripos((string)$asignaciones_act, $_GET['asignaciones']) === false) $mostrar_fila = false;
     if (isset($_GET['gasto']) && $_GET['gasto'] !== '' && stripos((string)$retirossolo, $_GET['gasto']) === false) $mostrar_fila = false;
     if (isset($_GET['retiro_saldo']) && $_GET['retiro_saldo'] !== '' && stripos((string)$retirossolo, $_GET['retiro_saldo']) === false) $mostrar_fila = false;
     if (isset($_GET['retiro_compra']) && $_GET['retiro_compra'] !== '' && stripos((string)$retiroscomprassolo, $_GET['retiro_compra']) === false) $mostrar_fila = false;
@@ -245,7 +335,7 @@ while ($row = $result->fetch_assoc()) {
         $tsaldo .= "<tr>";
         $tsaldo .= "<td>$".number_format($saldoInicialt)."</td>";
         $tsaldo .= "<td>$".number_format($depositosolo)."</td>";
-        $tsaldo .= "<td>$".number_format($asignaciones)."</td>";
+        $tsaldo .= "<td>$".number_format($asignaciones_act)."</td>";
         $tsaldo .= "<td>$".number_format($retirossolo)."</td>";
         $tsaldo .= "<td>$".number_format($retiroscomprassolo)."</td>";
         $tsaldo .= "<td>$".number_format($saldoinit)."</td>";
@@ -260,7 +350,7 @@ while ($row = $result->fetch_assoc()) {
 }
 
 //$saldoInicial = $depositos;
-$saldoDisponible = $depositos - $asignaciones - $retiros - $retiroscompras;
+$saldoDisponible = $depositos_act - $asignaciones_act - $retiros_act - $retiroscompras_act;
 
 echo $mostrar;
 
@@ -270,12 +360,54 @@ echo $mostrar;
 // Se basa únicamente en la base de datos local y sigue las definiciones de negocio proporcionadas.
 
 // 1. Cálculo de Cuenta Concentradora
-// Variables para los totales
-$saldoInicialCC = $saldoInicial; // Saldo final del periodo anterior o saldo inicial si es el primer periodo
-$depositosCC = $depositos; // Suma de depósitos
-$asignacionesCC = $asignaciones; // Suma de asignaciones a tarjetas
-$retirosCC = $retiros; // Suma de retiros a cuenta concentradora
-$saldoDisponibleCC = $saldoInicialCC + $depositosCC - $asignacionesCC - $retirosCC;
+$depositosCC = 0;
+$retirosCC = 0;
+$saldoInicialCC = 0;
+
+// Obtener Saldo Inicial de la Cuenta Concentradora
+$sqlSaldoInicial = "SELECT total_monto FROM empresas_movimientos WHERE id_empresa = ?";
+if ($fecha_inicio) {
+    $sqlSaldoInicial .= " AND fecha_movimiento < '" . $conn->real_escape_string($fecha_inicio) . "'";
+}
+$sqlSaldoInicial .= " ORDER BY fecha_movimiento DESC, id DESC LIMIT 1";
+
+$stmtSaldo = $conn->prepare($sqlSaldoInicial);
+$stmtSaldo->bind_param("i", $idEmpresa);
+$stmtSaldo->execute();
+$resultSaldo = $stmtSaldo->get_result();
+if ($rowSaldo = $resultSaldo->fetch_assoc()) {
+    $saldoInicialCC = floatval($rowSaldo['total_monto']);
+}
+$stmtSaldo->close();
+
+// Obtener movimientos de la empresa (depósitos y retiros) dentro del período
+$sqlMovimientosEmpresa = "SELECT monto_agregado, tipo_movimiento FROM empresas_movimientos WHERE id_empresa = ?";
+$date_conditions = [];
+if ($fecha_inicio) $date_conditions[] = "fecha_movimiento >= '" . $conn->real_escape_string($fecha_inicio) . "'";
+if ($fecha_fin)   $date_conditions[] = "fecha_movimiento <= '" . $conn->real_escape_string($fecha_fin) . "'";
+if (count($date_conditions) > 0) {
+    $sqlMovimientosEmpresa .= " AND " . implode(' AND ', $date_conditions);
+}
+
+$stmtMovimientos = $conn->prepare($sqlMovimientosEmpresa);
+$stmtMovimientos->bind_param("i", $idEmpresa);
+$stmtMovimientos->execute();
+$resultMovimientos = $stmtMovimientos->get_result();
+while ($rowMov = $resultMovimientos->fetch_assoc()) {
+    if ($rowMov['tipo_movimiento'] == 'Asignacion') {
+        $depositosCC += floatval($rowMov['monto_agregado']);
+    } elseif ($rowMov['tipo_movimiento'] == 'Retiro') {
+        // Los retiros ya vienen con signo negativo desde la BBDD
+        $retirosCC += floatval($rowMov['monto_agregado']);
+    }
+}
+$stmtMovimientos->close();
+
+// Las "Asignaciones a Tarjetas" se obtienen de la tabla activity
+$asignacionesCC = $asignaciones_act;
+
+// Cálculo del saldo disponible
+$saldoDisponibleCC = $saldoInicialCC + $depositosCC + $retirosCC - $asignacionesCC;
 
 // 2. Cálculo de Tarjetas (por cada tarjeta de la empresa)
 $usuariosEmpresa = [];
@@ -289,6 +421,11 @@ while ($row = $resUsuarios->fetch_assoc()) {
 $stmt->close();
 
 $tarjetas = [];
+$totalAsignacionesTarjetas = 0;
+$totalCargosTarjetas = 0;
+$totalRetirosTarjetas = 0;
+$totalSaldoTarjetas = 0;
+
 if (count($usuariosEmpresa) > 0) {
     $listaUsuarios = implode(",", array_map('intval', $usuariosEmpresa));
     $sqlTarjetas = "SELECT t.id, t.card_id, t.last_four, t.status, t.provider, t.affinity_group_name, t.start_date, u.name as NOMBRE_USUARIO
@@ -312,12 +449,90 @@ if (count($usuariosEmpresa) > 0) {
 
 // Mostrar encabezados de sección y datos generales
 $mostrar = '<h2 style="font-weight:bold;">Sección "Balance de Cuenta"</h2>';
-$mostrar .= '<ul>';
-$mostrar .= '<li><b>Nombre Empresa:</b> ' . $empresaNombre . '</li>';
-$mostrar .= '<li><b>Nombre Administrador:</b> ' . $adminNombre . '</li>';
+
+// ================== FORMULARIO DE FILTRO DE EMPRESA ==================
+$mostrar .= '<div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #dee2e6;">';
+$mostrar .= '<h4 style="margin-bottom: 15px; color: #156082;">Filtro de Empresa</h4>';
+$mostrar .= '<form method="get" style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">';
+
+// Mantener los filtros de fecha existentes
+$mostrar .= '<div style="display: flex; align-items: center; gap: 10px;">';
+$mostrar .= '<label style="font-weight: bold; min-width: 80px;">Empresa:</label>';
+$mostrar .= '<select name="empresa_filtro" style="padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px; min-width: 200px;">';
+
+// Obtener todas las empresas disponibles
+$stmt = $conn->prepare("SELECT ID_EMPRESA, NOMBRE_EMPRESA FROM empresas ORDER BY NOMBRE_EMPRESA");
+$stmt->execute();
+$resultEmpresas = $stmt->get_result();
+
+while ($row = $resultEmpresas->fetch_assoc()) {
+    $selected = ($row['ID_EMPRESA'] == $empresa_filtro) ? 'selected' : '';
+    $mostrar .= '<option value="' . $row['ID_EMPRESA'] . '" ' . $selected . '>' . htmlspecialchars($row['NOMBRE_EMPRESA']) . '</option>';
+}
+$stmt->close();
+
+$mostrar .= '</select>';
+$mostrar .= '</div>';
+
+// Mantener filtros de fecha existentes
+$mostrar .= '<div style="display: flex; align-items: center; gap: 10px;">';
+$mostrar .= '<label style="font-weight: bold; min-width: 80px;">Desde:</label>';
+$mostrar .= '<input type="date" name="fecha_inicio" value="' . htmlspecialchars($fecha_inicio) . '" style="padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px;">';
+$mostrar .= '</div>';
+
+$mostrar .= '<div style="display: flex; align-items: center; gap: 10px;">';
+$mostrar .= '<label style="font-weight: bold; min-width: 80px;">Hasta:</label>';
+$mostrar .= '<input type="date" name="fecha_fin" value="' . htmlspecialchars($fecha_fin) . '" style="padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px;">';
+$mostrar .= '</div>';
+
+// Mantener el ID de empresa original si existe
+if (isset($_GET['id_empresa'])) {
+    $mostrar .= '<input type="hidden" name="id_empresa" value="' . htmlspecialchars($_GET['id_empresa']) . '">';
+}
+
+$mostrar .= '<button type="submit" class="btn btn-primary" style="padding: 8px 16px; background-color: #156082; border: none; color: white; border-radius: 4px; cursor: pointer;">';
+$mostrar .= '<i class="fas fa-search" style="margin-right: 5px;"></i>Filtrar';
+$mostrar .= '</button>';
+
+$mostrar .= '<a href="reporteempresa.php" class="btn btn-secondary" style="padding: 8px 16px; background-color: #6c757d; border: none; color: white; border-radius: 4px; text-decoration: none; margin-left: 10px;">';
+$mostrar .= '<i class="fas fa-times" style="margin-right: 5px;"></i>Limpiar';
+$mostrar .= '</a>';
+
+$mostrar .= '</form>';
+$mostrar .= '</div>';
+
+// Mostrar información de la empresa seleccionada
+$mostrar .= '<div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #156082;">';
+$mostrar .= '<h4 style="margin: 0 0 10px 0; color: #156082;">Información de la Empresa</h4>';
+$mostrar .= '<ul style="margin: 0; padding-left: 20px;">';
+$mostrar .= '<li><b>Nombre Empresa:</b> ' . htmlspecialchars($empresaNombre) . '</li>';
+$mostrar .= '<li><b>Nombre Administrador:</b> ' . htmlspecialchars($adminNombre) . '</li>';
 $mostrar .= '<li><b>Periodo (Mes):</b> ' . $periodoMes . '</li>';
 $mostrar .= '<li><b>Fecha:</b> ' . $fechaHoy . '</li>';
+$mostrar .= '<li><b>Número de Tarjetas:</b> ' . $numeroTarjetas . '</li>';
+$mostrar .= '<li><b>Tarjetas en Uso:</b> ' . $counttarjetasusadas . '</li>';
+
+// Obtener el monto máximo configurado para comparación
+$stmt = $conn->prepare("SELECT MONTO_MAXIMO FROM empresas WHERE ID_EMPRESA = ?");
+$stmt->bind_param("i", $idEmpresa);
+$stmt->execute();
+$result = $stmt->get_result();
+if ($row = $result->fetch_assoc()) {
+    $montoMaximo = $row["MONTO_MAXIMO"];
+    $mostrar .= '<li><b>Monto Máximo Configurado:</b> $' . number_format($montoMaximo, 2) . '</li>';
+    $mostrar .= '<li><b>Saldo Real Actual:</b> $' . number_format($saldoInicial, 2) . '</li>';
+    
+    // Mostrar diferencia si existe
+    $diferencia = $saldoInicial - $montoMaximo;
+    if ($diferencia != 0) {
+        $colorDiferencia = $diferencia > 0 ? '#28a745' : '#dc3545';
+        $mostrar .= '<li><b>Diferencia:</b> <span style="color: ' . $colorDiferencia . '; font-weight: bold;">$' . number_format($diferencia, 2) . '</span></li>';
+    }
+}
+$stmt->close();
+
 $mostrar .= '</ul>';
+$mostrar .= '</div>';
 
 // === TABLA CUENTA CONCENTRADORA ===
 $mostrar .= '<h3>Cuenta Concentradora</h3>';
@@ -331,34 +546,168 @@ $mostrar .= '<th style="background-color: #156082; color: white;">Saldo Disponib
 $mostrar .= '</tr></thead>';
 $mostrar .= "<tbody style='background:#eaf6fa;color:#222;font-weight:normal;'>";
 $mostrar .= "<tr>";
-$mostrar .= "<td>$".number_format($saldoInicialCC,2)."</td>";
-$mostrar .= "<td>$".number_format($depositosCC,2)."</td>";
-$mostrar .= "<td>$".number_format($asignacionesCC,2)."</td>";
-$mostrar .= "<td>$".number_format($retirosCC,2)."</td>";
-$mostrar .= "<td>$".number_format($saldoDisponibleCC,2)."</td>";
+$mostrar .= "<td>$".number_format($saldoInicialCC, 2)."</td>";
+$mostrar .= "<td>$".number_format($depositosCC, 2)."</td>";
+$mostrar .= "<td>$".number_format($asignacionesCC, 2)."</td>";
+$mostrar .= "<td>$".number_format(abs($retirosCC), 2)."</td>";
+$mostrar .= "<td>$".number_format($saldoDisponibleCC, 2)."</td>";
 $mostrar .= "</tr></tbody></table>";
+
+// === HISTORIAL DE MOVIMIENTOS DE EMPRESA ===
+/* $mostrar .= '<h4 style="margin-top: 20px; color: #156082;">Historial de Movimientos de Cuenta Concentradora</h4>';
+$mostrar .= '<div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #dee2e6; margin-bottom: 20px;">';
+
+// Obtener historial de movimientos
+$stmt = $conn->prepare("
+    SELECT monto_agregado, total_monto, fecha_movimiento, tipo_movimiento 
+    FROM empresas_movimientos 
+    WHERE id_empresa = ? 
+    ORDER BY fecha_movimiento DESC, id DESC 
+    LIMIT 10
+");
+$stmt->bind_param("i", $idEmpresa);
+$stmt->execute();
+$result = $stmt->get_result();
+
+if ($result->num_rows > 0) {
+    $mostrar .= '<table class="table table-bordered" style="margin-bottom: 0;">';
+    $mostrar .= '<thead><tr>';
+    $mostrar .= '<th style="background-color: #6c757d; color: white;">Fecha</th>';
+    $mostrar .= '<th style="background-color: #6c757d; color: white;">Tipo</th>';
+    $mostrar .= '<th style="background-color: #6c757d; color: white;">Monto Agregado</th>';
+    $mostrar .= '<th style="background-color: #6c757d; color: white;">Total Acumulado</th>';
+    $mostrar .= '</tr></thead>';
+    $mostrar .= '<tbody style="background:#ffffff;color:#222;font-weight:normal;">';
+    
+    while ($row = $result->fetch_assoc()) {
+        $colorTipo = $row['tipo_movimiento'] == 'Asignacion' ? '#28a745' : '#dc3545';
+        $mostrar .= "<tr>";
+        $mostrar .= "<td>" . htmlspecialchars($row['fecha_movimiento']) . "</td>";
+        $mostrar .= "<td style='color: " . $colorTipo . "; font-weight: bold;'>" . htmlspecialchars($row['tipo_movimiento']) . "</td>";
+        $mostrar .= "<td>$" . number_format($row['monto_agregado'], 2) . "</td>";
+        $mostrar .= "<td style='font-weight: bold;'>$" . number_format($row['total_monto'], 2) . "</td>";
+        $mostrar .= "</tr>";
+    }
+    
+    $mostrar .= '</tbody></table>';
+} else {
+    $mostrar .= '<div style="text-align: center; padding: 20px; color: #6c757d; font-style: italic;">';
+    $mostrar .= 'No hay movimientos registrados para esta empresa.';
+    $mostrar .= '</div>';
+}
+
+$stmt->close();
+$mostrar .= '</div>'; */
 
 // === TABLA TARJETAS ===
 $mostrar .= '<h3>Tarjetas</h3>';
 $mostrar .= '<table class="table table-bordered">';
 $mostrar .= '<thead><tr>';
+$mostrar .= '<th style="background-color: #156082; color: white;">Usuario</th>';
+$mostrar .= '<th style="background-color: #156082; color: white;">Últimos 4 Dígitos</th>';
+$mostrar .= '<th style="background-color: #156082; color: white;">Estado</th>';
+$mostrar .= '<th style="background-color: #156082; color: white;">Proveedor</th>';
+$mostrar .= '<th style="background-color: #156082; color: white;">Fecha de Inicio</th>';
 $mostrar .= '<th style="background-color: #156082; color: white;">Saldo Inicial</th>';
 $mostrar .= '<th style="background-color: #156082; color: white;">Asignaciones</th>';
 $mostrar .= '<th style="background-color: #156082; color: white;">Cargos / Retiros</th>';
 $mostrar .= '<th style="background-color: #156082; color: white;">Retiros a Cuenta Concentradora</th>';
-$mostrar .= '<th style="background-color: #156082; color: white;">Saldo Disponible en Tarjetas</th>';
+$mostrar .= '<th style="background-color: #156082; color: white;">Saldo Disponible</th>';
 $mostrar .= '</tr></thead><tbody style="background:#eaf6fa;color:#222;font-weight:normal;">';
-// NOTA: Aquí debes calcular y mostrar los valores correctos por cada tarjeta si tienes esa lógica, si no, puedes mostrar una fila resumen o dejarlo preparado para el futuro.
-foreach ($tarjetas as $t) {
-    $mostrar .= "<tr>";
-    $mostrar .= "<td>--</td>"; // Saldo Inicial (ajustar si tienes el dato)
-    $mostrar .= "<td>--</td>"; // Asignaciones (ajustar si tienes el dato)
-    $mostrar .= "<td>--</td>"; // Cargos / Retiros (ajustar si tienes el dato)
-    $mostrar .= "<td>--</td>"; // Retiros a Cuenta Concentradora (ajustar si tienes el dato)
-    $mostrar .= "<td>--</td>"; // Saldo Disponible en Tarjetas (ajustar si tienes el dato)
+
+if (count($tarjetas) > 0) {
+    foreach ($tarjetas as $t) {
+        // Calcular valores por tarjeta (esto se puede mejorar con consultas específicas)
+        $saldoInicialTarjeta = 0; // Se puede calcular desde el historial
+        $asignacionesTarjeta = 0; // Se puede calcular desde activity
+        $cargosTarjeta = 0; // Se puede calcular desde activity
+        $retirosTarjeta = 0; // Se puede calcular desde activity
+        $saldoDisponibleTarjeta = $saldoInicialTarjeta + $asignacionesTarjeta - $cargosTarjeta - $retirosTarjeta;
+        
+        // Acumular totales
+        $totalAsignacionesTarjetas += $asignacionesTarjeta;
+        $totalCargosTarjetas += $cargosTarjeta;
+        $totalRetirosTarjetas += $retirosTarjeta;
+        $totalSaldoTarjetas += $saldoDisponibleTarjeta;
+        
+        $mostrar .= "<tr>";
+        $mostrar .= "<td>" . htmlspecialchars($t['usuario'] ?? 'N/A') . "</td>";
+        $mostrar .= "<td>" . htmlspecialchars($t['last_four'] ?? 'N/A') . "</td>";
+        $mostrar .= "<td>" . htmlspecialchars($t['status'] ?? 'N/A') . "</td>";
+        $mostrar .= "<td>" . htmlspecialchars($t['provider'] ?? 'N/A') . "</td>";
+        $mostrar .= "<td>" . htmlspecialchars($t['start_date'] ?? 'N/A') . "</td>";
+        $mostrar .= "<td>$" . number_format($saldoInicialTarjeta, 2) . "</td>";
+        $mostrar .= "<td>$" . number_format($asignacionesTarjeta, 2) . "</td>";
+        $mostrar .= "<td>$" . number_format($cargosTarjeta, 2) . "</td>";
+        $mostrar .= "<td>$" . number_format($retirosTarjeta, 2) . "</td>";
+        $mostrar .= "<td>$" . number_format($saldoDisponibleTarjeta, 2) . "</td>";
+        $mostrar .= "</tr>";
+    }
+    
+    // Fila de totales
+    $mostrar .= "<tr style='background-color: #156082; color: white; font-weight: bold;'>";
+    $mostrar .= "<td colspan='5'><strong>TOTALES</strong></td>";
+    $mostrar .= "<td>$" . number_format(0, 2) . "</td>"; // Total saldo inicial
+    $mostrar .= "<td>$" . number_format($totalAsignacionesTarjetas, 2) . "</td>";
+    $mostrar .= "<td>$" . number_format($totalCargosTarjetas, 2) . "</td>";
+    $mostrar .= "<td>$" . number_format($totalRetirosTarjetas, 2) . "</td>";
+    $mostrar .= "<td>$" . number_format($totalSaldoTarjetas, 2) . "</td>";
     $mostrar .= "</tr>";
+} else {
+    $mostrar .= "<tr><td colspan='10' style='text-align: center; font-style: italic;'>No hay tarjetas registradas para esta empresa</td></tr>";
 }
+
 $mostrar .= "</tbody></table>";
+
+/* // === RESUMEN FINAL ===
+$mostrar .= '<h3 style="margin-top: 30px;">Resumen General</h3>';
+$mostrar .= '<div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #dee2e6;">';
+$mostrar .= '<table class="table table-bordered" style="margin-bottom: 0;">';
+$mostrar .= '<thead><tr>';
+$mostrar .= '<th style="background-color: #28a745; color: white;">Concepto</th>';
+$mostrar .= '<th style="background-color: #28a745; color: white;">Cuenta Concentradora</th>';
+$mostrar .= '<th style="background-color: #28a745; color: white;">Tarjetas</th>';
+$mostrar .= '<th style="background-color: #28a745; color: white;">Diferencia</th>';
+$mostrar .= '</tr></thead>';
+$mostrar .= '<tbody style="background:#e8f5e8;color:#222;font-weight:normal;">';
+
+// Fila de asignaciones
+$diferenciaAsignaciones = $asignacionesCC - $totalAsignacionesTarjetas;
+$mostrar .= "<tr>";
+$mostrar .= "<td><strong>Asignaciones</strong></td>";
+$mostrar .= "<td>$" . number_format($asignacionesCC, 2) . "</td>";
+$mostrar .= "<td>$" . number_format($totalAsignacionesTarjetas, 2) . "</td>";
+$mostrar .= "<td style='color: " . ($diferenciaAsignaciones == 0 ? 'green' : 'red') . ";'>$" . number_format($diferenciaAsignaciones, 2) . "</td>";
+$mostrar .= "</tr>";
+
+// Fila de retiros
+$diferenciaRetiros = $retirosCC - $totalRetirosTarjetas;
+$mostrar .= "<tr>";
+$mostrar .= "<td><strong>Retiros</strong></td>";
+$mostrar .= "<td>$" . number_format($retirosCC, 2) . "</td>";
+$mostrar .= "<td>$" . number_format($totalRetirosTarjetas, 2) . "</td>";
+$mostrar .= "<td style='color: " . ($diferenciaRetiros == 0 ? 'green' : 'red') . ";'>$" . number_format($diferenciaRetiros, 2) . "</td>";
+$mostrar .= "</tr>";
+
+// Fila de saldo disponible
+$diferenciaSaldo = $saldoDisponibleCC - $totalSaldoTarjetas;
+$mostrar .= "<tr style='background-color: #d4edda; font-weight: bold;'>";
+$mostrar .= "<td><strong>Saldo Disponible</strong></td>";
+$mostrar .= "<td>$" . number_format($saldoDisponibleCC, 2) . "</td>";
+$mostrar .= "<td>$" . number_format($totalSaldoTarjetas, 2) . "</td>";
+$mostrar .= "<td style='color: " . ($diferenciaSaldo == 0 ? 'green' : 'red') . "; font-weight: bold;'>$" . number_format($diferenciaSaldo, 2) . "</td>";
+$mostrar .= "</tr>";
+
+$mostrar .= '</tbody></table>';
+$mostrar .= '</div>'; */
+
+/* // Nota informativa
+if ($diferenciaSaldo != 0) {
+    $mostrar .= '<div style="background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 15px; border-radius: 8px; margin-top: 15px;">';
+    $mostrar .= '<strong>Nota:</strong> Existe una diferencia entre el saldo de la cuenta concentradora y las tarjetas. ';
+    $mostrar .= 'Esto puede deberse a movimientos pendientes, cargos en proceso, o diferencias en el cálculo de saldos.';
+    $mostrar .= '</div>';
+} */
 ?>
 <!DOCTYPE html>
 <html lang="en" dir="ltr" data-bs-theme="ligth" data-color-theme="Blue_Theme" data-layout="vertical">

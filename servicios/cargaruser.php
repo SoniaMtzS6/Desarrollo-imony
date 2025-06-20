@@ -113,25 +113,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Generar un ID único para el usuario
         $id = uniqid('USR_');
-        $status = 1; // Usuario activo por defecto
+        $status = 'ACTIVE'; // Usuario activo por defecto (debe ser uno de los valores del ENUM)
         
         // Preparar todos los valores antes del bind_param
         $identification_type = "INE";
-        $identification_value = str_pad(random_int(0, 99999999), 8, '0', STR_PAD_LEFT);
+        $identification_value = random_int(10000000, 99999999); // Número entero para BIGINT
         $tax_identification_type = "RFC";
-        $tax_identification_value = $rfc;
+        $tax_identification_value = (int)$rfc; // Convertir a entero para BIGINT
         $nationality = "MEX";
         $tax_condition = "VAT_REGISTERED";
         $operation_country = "MEX";
         $surname = $nombre; // usando el mismo valor para surname
+        $password = password_hash('temporal123', PASSWORD_DEFAULT); // Contraseña temporal por defecto
+        $is_password_temporary = 1; // Indicar que es contraseña temporal
         
-        // Insertar usuario en la tabla users
-        $stmt = $conn->prepare("INSERT INTO users (id, name, surname, identification_type, identification_value, 
+        // Insertar usuario en la tabla user
+        $stmt = $conn->prepare("INSERT INTO user (id, name, surname, identification_type, identification_value, 
             birthdate, gender, email, phone, tax_identification_type, tax_identification_value, 
-            nationality, tax_condition, operation_country, status, id_empresa) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            nationality, tax_condition, operation_country, status, id_empresa, password, is_password_temporary) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             
-        $stmt->bind_param("ssssssssssssssii", 
+        $stmt->bind_param("ssssisssssssssiisi", 
             $id, 
             $nombre, 
             $surname,
@@ -147,11 +149,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $tax_condition,
             $operation_country,
             $status,
-            $empresa
+            $empresa,
+            $password,
+            $is_password_temporary
         );
         
         if ($stmt->execute()) {
-            echo "Usuario creado exitosamente en la base de datos local";
+            $user_id = $id; // El ID del usuario que acabamos de crear
+
+            // Ahora, creamos la cuenta asociada al usuario
+            $account_data = [
+                "id_empresa" => $empresa,
+                "provider" => "POMELO",
+                "id_user" => $user_id,
+                "currency" => "MXN"
+            ];
+            $jsonDataAccount = json_encode($account_data);
+
+            $curl = curl_init();
+            curl_setopt_array($curl, array(
+                CURLOPT_URL => getApiBaseUrl() . '/account/api/v1',
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_ENCODING => '',
+                CURLOPT_MAXREDIRS => 10,
+                CURLOPT_TIMEOUT => 0,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+                CURLOPT_CUSTOMREQUEST => 'POST',
+                CURLOPT_POSTFIELDS => $jsonDataAccount,
+                CURLOPT_HTTPHEADER => array(
+                    'Content-Type: application/json'
+                ),
+            ));
+            
+            $response = curl_exec($curl);
+            $curl_error = curl_error($curl);
+            curl_close($curl);
+            
+            if ($curl_error) {
+                throw new Exception("Error en cURL al crear la cuenta: " . $curl_error);
+            }
+            
+            $account_response = json_decode($response, true);
+
+            if (isset($account_response['data']['id'])) {
+                $id_account = $account_response['data']['id'];
+                
+                // Actualizamos el usuario con el id_account
+                $stmt_update = $conn->prepare("UPDATE user SET id_account = ? WHERE id = ?");
+                $stmt_update->bind_param("ss", $id_account, $user_id);
+                $stmt_update->execute();
+                $stmt_update->close();
+            } else {
+                // Si la API no devuelve un ID de cuenta, lanzamos un error para verlo
+                $error_message = isset($account_response['message']) ? $account_response['message'] : 'Respuesta inesperada de la API de cuentas.';
+                throw new Exception("Error al crear la cuenta en la API: " . $error_message . " | Respuesta completa: " . $response);
+            }
+
             header("Location: ../usuarios.php?creada=1");
         } else {
             throw new Exception("Error al crear el usuario: " . $stmt->error);

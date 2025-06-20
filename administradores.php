@@ -52,6 +52,9 @@ try {
                     </form>
                 </td>
                 <td>
+                    <div class="d-flex justify-content-end">'.$admin['codigo_admin'].'</div>
+                </td>
+                <td>
                     <div class="d-flex justify-content-end">'.$admin['email'].'</div>
                 </td>
                 <td>'.$admin['NOMBRE_EMPRESA'].'</td>
@@ -203,6 +206,9 @@ if ($response) {
                             <label for="keyword" class="fs-11 text-dark fw-medium">Nombre</label>
                           </div>
                         </form>
+                      </th>
+                      <th class="align-top">
+                        <h6 class="fs-11 fw-medium mb-0 text-end">Código</h6>
                       </th>
                       <th class="align-top">
                         <h6 class="fs-11 fw-medium mb-0 text-end">Correo</h6>

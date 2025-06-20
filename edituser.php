@@ -5,6 +5,8 @@ error_reporting(E_ALL);
 include 'functions.php';
 session_start();
 
+$status_update = $_GET['status_update'] ?? '';
+
 // Validar sesión iniciada
 if (!isset($_SESSION["usuario"])) {
     echo '<div style="color:red;">Redirigiendo a index.php por falta de sesión.</div>';
@@ -22,23 +24,28 @@ if ($_SESSION["usuario"]["doblefactor"] !== "1") {
 $id = isset($_GET['id']) ? $_GET['id'] : null;
 $acc = isset($_GET['acc']) ? $_GET['acc'] : null;
 
+$user = null; // Inicializar la variable $user
+
 // Si no viene acc, lo buscamos en la base de datos
-if ($id && !$acc) {
+if ($id) {
     $conn = getDbConnection();
-    $acc_found = false;
-    // Intentar primero con 'user'
-    try {
-        $stmt = $conn->prepare("SELECT id_account FROM user WHERE id_ = ?");
-        $stmt->bind_param("i", $id);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        if ($row = $res->fetch_assoc()) {
-            $acc = $row['id_account'];
-            $acc_found = true;
+    
+    // Obtener datos del usuario, incluyendo el estado 'status'
+    $stmt_user = $conn->prepare("SELECT *, status FROM user WHERE id_ = ?");
+    $stmt_user->bind_param("i", $id);
+    $stmt_user->execute();
+    $result_user = $stmt_user->get_result();
+    if ($result_user->num_rows > 0) {
+        $user = $result_user->fetch_assoc();
+        if (!$acc && isset($user['id_account'])) {
+            $acc = $user['id_account'];
         }
-        $stmt->close();
-    } catch (mysqli_sql_exception $e) {
-        // Si falla, intentamos con 'user'
+    }
+    $stmt_user->close();
+
+    if (!$acc) {
+        // Intentar buscar 'id_account' si no se encontró antes
+        $acc_found = false;
         try {
             $stmt = $conn->prepare("SELECT id_account FROM user WHERE id_ = ?");
             $stmt->bind_param("i", $id);
@@ -49,14 +56,14 @@ if ($id && !$acc) {
                 $acc_found = true;
             }
             $stmt->close();
-        } catch (mysqli_sql_exception $e2) {
-            echo "<div style='color:red;'>No se encontró la tabla 'user' ni 'users' en la base de datos.</div>";
+        } catch (mysqli_sql_exception $e) {
+            // Manejar excepción si la tabla o columna no existen
+        }
+        if (!$acc_found) {
+            echo "<div style='color:red;'>No se encontró el campo 'id_account' para el usuario con id $id.</div>";
         }
     }
     $conn->close();
-    if (!$acc_found) {
-        echo "<div style='color:red;'>No se encontró el campo 'id_account' para el usuario con id $id.</div>";
-    }
 }
 
 $carid = "";
@@ -413,9 +420,10 @@ if ($isLocal) {
 </head>
 
 <body class="link-sidebar">
-  <!-- <div class="preloader">
+  <!-- Preloader -->
+  <div class="preloader">
     <img src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/images/logos/favicon.png" alt="loader" class="lds-ripple img-fluid" />
-  </div> -->
+  </div>
   <div id="main-wrapper">
   <?php include 'header.php'; ?>
 
@@ -423,6 +431,11 @@ if ($isLocal) {
 
       <div class="body-wrapper">
         <div class="container-fluid">
+          <?php if ($status_update === 'success'): ?>
+            <div class="alert alert-success" role="alert">
+              ¡El estado del usuario se ha actualizado correctamente!
+            </div>
+          <?php endif; ?>
           <div class="mb-4">
             <div class="row align-items-center">
               <div class="col-md-6 col-lg-5">
@@ -508,12 +521,38 @@ if ($isLocal) {
                               </div>
                             </div>
                             <div class="col-12">
-                              <div class="d-flex justify-content-end gap-3 mt-4">
-                                <button type="submit" class="btn btn-primary">Guardar</button>
-                                <a href="usuarios.php" class="btn btn-secondary">Cancelar</a>
-                              </div>
+                                <div class="d-flex align-items-center justify-content-end mt-4 gap-6">
+                                    <button type="submit" class="btn btn-primary">Guardar</button>
+                                    <a href="usuarios.php" class="btn bg-danger-subtle text-danger">Cancelar</a>
+                                </div>
+                                </div>
                             </div>
                           </form>
+                        </div>
+                      </div>
+                      <!-- Sección de Acciones de Usuario -->
+                      <div class="card w-100 border position-relative overflow-hidden mb-0 mt-4">
+                        <div class="card-body p-4">
+                            <h4 class="card-title">Acciones de la cuenta</h4>
+                            <p class="card-subtitle mb-4">Realiza acciones permanentes sobre la cuenta del usuario.</p>
+                            <div class="d-flex gap-3">
+                                <!-- Formulario de Bloqueo/Desbloqueo -->
+                                <form method="POST" action="servicios/editarusuario.php" style="display:inline;">
+                                    <input type="hidden" name="accion" value="bloquear">
+                                    <input type="hidden" name="iduser" value="<?php echo htmlspecialchars($id ?? ''); ?>">
+                                    <?php if (isset($user['status']) && $user['status'] == 'ACTIVE'): ?>
+                                        <button type="submit" class="btn btn-warning">Bloquear Usuario</button>
+                                    <?php else: ?>
+                                        <button type="submit" class="btn btn-success">Desbloquear Usuario</button>
+                                    <?php endif; ?>
+                                </form>
+                                <!-- Formulario de Eliminación -->
+                                <form id="formEliminarUsuario" method="POST" action="servicios/editarusuario.php" style="display:inline;">
+                                    <input type="hidden" name="accion" value="eliminar">
+                                    <input type="hidden" name="iduser" value="<?php echo htmlspecialchars($id ?? ''); ?>">
+                                    <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#modalEliminarUsuario">Eliminar Usuario</button>
+                                </form>
+                            </div>
                         </div>
                       </div>
                     </div>
@@ -782,6 +821,44 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 });
+</script>
+
+<!-- Modal de confirmación de eliminación -->
+<div class="modal fade" id="modalEliminarUsuario" tabindex="-1" aria-labelledby="modalEliminarUsuarioLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalEliminarUsuarioLabel">Confirmar eliminación</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        ¿Estás seguro de que deseas eliminar este usuario? Esta acción no es reversible.
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-danger" id="confirmarEliminarBtn">Eliminar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+      // ... otro código ...
+
+      // Manejador del modal de eliminación de usuario
+      var modalEliminarUsuario = document.getElementById('modalEliminarUsuario');
+      if(modalEliminarUsuario) {
+          var confirmarEliminarBtn = modalEliminarUsuario.querySelector('#confirmarEliminarBtn');
+          var formEliminarUsuario = document.getElementById('formEliminarUsuario');
+          
+          confirmarEliminarBtn.addEventListener('click', function() {
+              if(formEliminarUsuario) {
+                  formEliminarUsuario.submit();
+              }
+          });
+      }
+  });
 </script>
 </body>
 

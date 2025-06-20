@@ -82,6 +82,14 @@ if ($_SESSION["usuario"]["doblefactor"] !== "1") {
             </a>
           </li>
           
+          <li class="sidebar-item">
+            <a href="servicios/reporte_settlements_v2.php?id_empresa=<?php echo $_SESSION['usuario']['id_empresa']; ?>" class="sidebar-link">
+              <span class="aside-icon p-2">
+                <iconify-icon icon="solar:bank-bold-duotone" class="fs-6"></iconify-icon>
+              </span>
+              <span class="hide-menu">Reporte Settlements</span>
+            </a>
+          </li>
         </ul>
       </nav>
 

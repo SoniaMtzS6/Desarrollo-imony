@@ -71,18 +71,26 @@ try {
     // Calcular el offset para la paginación
     $offset = $page * $size;
 
-    // Consulta SQL base
-    $sql = "SELECT * FROM user";
-    $countSql = "SELECT COUNT(*) as total FROM user";
+    // Construir condiciones para la consulta
+    $whereConditions = [];
+    $whereConditions[] = "u.status != 'DELETED'"; // Excluir usuarios eliminados
 
     // Modificar la consulta según el perfil del usuario
     if (isset($_SESSION["usuario"]["perfil"]) && $_SESSION["usuario"]["perfil"] !== "Superadministrador") {
         if (isset($_SESSION["usuario"]["id_empresa"])) {
             $id_empresa = intval($_SESSION["usuario"]["id_empresa"]);
-            $sql .= " WHERE id_empresa = " . $id_empresa;
-            $countSql .= " WHERE id_empresa = " . $id_empresa;
+            $whereConditions[] = "u.id_empresa = " . $id_empresa;
         }
     }
+
+    $whereClause = "";
+    if (!empty($whereConditions)) {
+        $whereClause = " WHERE " . implode(" AND ", $whereConditions);
+    }
+
+    // Consulta SQL con las condiciones
+    $sql = "SELECT u.*, e.NOMBRE_EMPRESA FROM user u LEFT JOIN empresas e ON u.id_empresa = e.id_empresa" . $whereClause;
+    $countSql = "SELECT COUNT(*) as total FROM user u" . $whereClause;
 
     // Agregar límite y offset para paginación
     $sql .= " ORDER BY create_time DESC LIMIT $size OFFSET $offset";
@@ -103,9 +111,23 @@ try {
         $userEmail = $user['email'];
         $userdate = $user['create_time'];
         $id_empresa = isset($user['id_empresa']) ? $user['id_empresa'] : null;
-        $status = ($user['status'] == 'ACTIVE' || $user['status'] == 1) ? 
-            '<span class="badge bg-success custom-badge hstack justify-content-center p-0 ms-auto">Activo</span>' : 
-            '<span class="badge bg-danger custom-badge hstack justify-content-center p-0 ms-auto">Inactivo</span>';
+        
+        $status = $user['status'];
+        $statusBadge = '';
+        switch ($status) {
+            case 'ACTIVE':
+                $statusBadge = '<span class="badge bg-success custom-badge hstack justify-content-center p-0 ms-auto">Activo</span>';
+                break;
+            case 'BLOCKED':
+                $statusBadge = '<span class="badge bg-warning custom-badge hstack justify-content-center p-0 ms-auto">Bloqueado</span>';
+                break;
+            case 'DELETED':
+                $statusBadge = '<span class="badge bg-danger custom-badge hstack justify-content-center p-0 ms-auto">Eliminado</span>';
+                break;
+            default:
+                $statusBadge = '<span class="badge bg-secondary custom-badge hstack justify-content-center p-0 ms-auto">Inactivo</span>';
+                break;
+        }
 
         $nombreEmpresa = ($id_empresa && isset($empresas[$id_empresa])) ? $empresas[$id_empresa] : 'Empresa no asignada';
 
@@ -119,11 +141,14 @@ try {
                         </form>
                     </td>
                     <td>
+                        <div class="d-flex justify-content-end">'.$user['codigo_user'].'</div>
+                    </td>
+                    <td>
                         <div class="d-flex justify-content-end">'.$userEmail.'</div>
                     </td>
                     <td>'.$nombreEmpresa.'</td>
                     <td>'.date('d/m/Y', strtotime($userdate)).'</td>
-                    <td>'.$status.'</td>
+                    <td>'.$statusBadge.'</td>
                     <td>
                         <a href="asignartarjeta.php?id='.$userId.'" class="btn btn-primary d-flex align-items-center gap-1">Asignar</a>
                     </td>
@@ -238,6 +263,9 @@ try {
                             <label for="keyword" class="fs-11 text-dark fw-medium">Nombre</label>
                           </div>
                         </form>
+                      </th>
+                      <th class="align-top">
+                        <h6 class="fs-11 fw-medium mb-0 text-end">Código</h6>
                       </th>
                       <th class="align-top">
                         <h6 class="fs-11 fw-medium mb-0 text-end">Correo</h6>
@@ -358,4 +386,5 @@ try {
 
 
 <!-- Mirrored from bootstrapdemos.adminmart.com/seodash/dist/dark/page-organic-keywords.html by HTTrack Website Copier/3.x [XR&CO'2014], Mon, 23 Sep 2024 04:46:20 GMT -->
+</html>
 </html>

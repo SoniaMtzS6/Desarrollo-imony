@@ -12,17 +12,50 @@ if ($conn->connect_error) {
 
 $idempresa = $_GET['idempresa'] ?? null;
 $empresa = null;
+$saldo_asignado = 0;
+$saldo_movimientos = 0;
+$fecha_ultima_asignacion = null;
 
 if ($idempresa) {
+    // Obtener datos de la empresa
     $stmt = $conn->prepare("SELECT * FROM empresas WHERE ID_EMPRESA = ?");
     $stmt->bind_param("i", $idempresa);
     $stmt->execute();
     $resultado = $stmt->get_result();
-
     if ($resultado->num_rows === 1) {
         $empresa = $resultado->fetch_assoc();
     }
     $stmt->close();
+
+    // Calcular "Saldo Asignado" (Último fondeo del mes actual) y su fecha
+    $stmt_asignado = $conn->prepare("
+        SELECT monto_agregado as ultimo_fondeo, fecha_movimiento
+        FROM empresas_movimientos 
+        WHERE id_empresa = ? 
+          AND tipo_movimiento = 'Asignacion' 
+          AND MONTH(fecha_movimiento) = MONTH(CURDATE()) 
+          AND YEAR(fecha_movimiento) = YEAR(CURDATE())
+        ORDER BY fecha_movimiento DESC, id DESC 
+        LIMIT 1
+    ");
+    $stmt_asignado->bind_param("i", $idempresa);
+    $stmt_asignado->execute();
+    $resultado_asignado = $stmt_asignado->get_result();
+    if ($fila_asignado = $resultado_asignado->fetch_assoc()) {
+        $saldo_asignado = $fila_asignado['ultimo_fondeo'] ?? 0;
+        $fecha_ultima_asignacion = $fila_asignado['fecha_movimiento'];
+    }
+    $stmt_asignado->close();
+
+    // Calcular "Saldo de Movimientos" (Balance neto total)
+    $stmt_movimientos = $conn->prepare("SELECT SUM(monto_agregado) as total FROM empresas_movimientos WHERE id_empresa = ?");
+    $stmt_movimientos->bind_param("i", $idempresa);
+    $stmt_movimientos->execute();
+    $resultado_movimientos = $stmt_movimientos->get_result();
+    if ($fila_movimientos = $resultado_movimientos->fetch_assoc()) {
+        $saldo_movimientos = $fila_movimientos['total'] ?? 0;
+    }
+    $stmt_movimientos->close();
 }
 
 $conn->close();
@@ -129,6 +162,57 @@ $conn->close();
               </div>
             </div>
           </div>
+
+          <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="border-bottom title-part-padding">
+                        <div class="row align-items-center">
+                            <div class="col-md-5">
+                                <h4 class="card-title mb-0">Asignar/Retirar Monto</h4>
+                            </div>
+                            <div class="col-md-3 text-center">
+                                <h6 class="text-muted mb-0">Saldo Disponible</h6>
+                                <span class="fs-5 fw-bold">$<?php echo number_format($saldo_movimientos, 2); ?></span>
+                            </div>
+                            <div class="col-md-4 text-end">
+                                <h6 class="text-muted mb-0">Ultima asignacion de saldo</h6>
+                                <span class="fs-5 fw-bold text-success">$<?php echo number_format($saldo_asignado, 2); ?></span>
+                                <?php if ($fecha_ultima_asignacion): ?>
+                                    <small class="text-muted d-block mt-1">
+                                        Fecha: <?php echo date("d/m/Y", strtotime($fecha_ultima_asignacion)); ?>
+                                    </small>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <form class="needs-validation" method="POST" action="servicios/procesarmonto.php">
+                            <input type="hidden" name="id_empresa" value="<?php echo htmlspecialchars($idempresa); ?>" />
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label" for="monto">Monto</label>
+                                    <input type="number" step="0.01" class="form-control" id="monto" name="monto" placeholder="0.00" required />
+                                    <div class="invalid-tooltip">
+                                        Proporciona un monto.
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label" for="comentario">Motivo del movimiento</label>
+                                    <input type="text" class="form-control" id="comentario" name="comentario" placeholder="Ej: Depósito inicial" />
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <button class="btn btn-success" type="submit" name="accion" value="asignar">Asignar monto</button>
+                                    <button class="btn btn-danger" type="submit" name="accion" value="retirar">Retirar monto</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
 
           <div class="row" hidden>
             <div class="col-12">
@@ -269,7 +353,7 @@ $conn->close();
             </div>
           </div>
 
-          <?php if (isset($_SESSION['usuario']) && $_SESSION['usuario']['perfil'] === 'Superadministrador'): ?>
+          <!-- <?php if (isset($_SESSION['usuario']) && $_SESSION['usuario']['perfil'] === 'Superadministrador'): ?>
           <div class="row justify-content-center mt-4">
             <div class="col-md-6">
               <div class="card shadow-sm">
@@ -302,7 +386,7 @@ $conn->close();
               </div>
             </div>
           </div>
-          <?php endif; ?>
+          <?php endif; ?> -->
 
           <div class="text-center py-3">
             <p class="mb-0">2024 © Fisinter derechos</p>

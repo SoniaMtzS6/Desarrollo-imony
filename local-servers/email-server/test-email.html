@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Simulador de Email</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .response {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 20px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            word-wrap: break-word;
+        }
+        .code-section {
+            background-color: #e9ecef;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        .code-section h4 {
+            margin-top: 0;
+            color: #495057;
+        }
+        #inbox table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        #inbox th, #inbox td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        #inbox th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test Simulador de Email</h1>
+
+    <div class="container">
+        <h2>📥 Bandeja de Entrada Simulada</h2>
+        <button id="refreshInbox">Refrescar</button>
+        <div id="inbox" class="response" style="margin-top: 15px;">
+            Cargando emails...
+        </div>
+    </div>
+    
+    <div class="container">
+        <h2>📧 Email Individual</h2>
+        <form id="emailForm">
+            <div class="form-group">
+                <label for="to">Para:</label>
+                <input type="email" id="to" value="test@example.com" required>
+            </div>
+            <div class="form-group">
+                <label for="subject">Asunto:</label>
+                <input type="text" id="subject" value="Test de Email Simulado" required>
+            </div>
+            <div class="form-group">
+                <label for="body">Contenido:</label>
+                <textarea id="body" required>Este es un email de prueba del simulador.</textarea>
+            </div>
+            <button type="submit">Enviar Email Individual</button>
+        </form>
+    </div>
+
+    <div class="container">
+        <h2>📬 Email Masivo</h2>
+        <form id="massEmailForm">
+            <div class="form-group">
+                <label for="recipients">Destinatarios (separados por comas):</label>
+                <input type="text" id="recipients" value="user1@example.com, user2@example.com, user3@example.com" required>
+            </div>
+            <div class="form-group">
+                <label for="massSubject">Asunto:</label>
+                <input type="text" id="massSubject" value="Email Masivo de Prueba" required>
+            </div>
+            <div class="form-group">
+                <label for="massContent">Contenido:</label>
+                <textarea id="massContent" required>Este es un email masivo de prueba del simulador.</textarea>
+            </div>
+            <button type="submit">Enviar Email Masivo</button>
+        </form>
+    </div>
+
+    <div class="container">
+        <h2>📋 Respuesta del Servidor (Último envío manual)</h2>
+        <div id="response" class="response">Esperando envío de email...</div>
+        
+        <div id="codeSection" class="code-section" style="display: none;">
+            <h4>🔧 Código JavaScript Generado:</h4>
+            <div id="generatedCode" class="response"></div>
+        </div>
+    </div>
+
+    <script>
+        const inboxDiv = document.getElementById('inbox');
+        const refreshInboxBtn = document.getElementById('refreshInbox');
+
+        async function fetchInbox() {
+            try {
+                const response = await fetch(`/emails/history?t=${new Date().getTime()}`);
+                const emails = await response.json();
+                
+                inboxDiv.innerHTML = ''; // Limpiar
+                
+                if (emails.length === 0) {
+                    inboxDiv.textContent = 'No hay emails en la bandeja de entrada.';
+                    return;
+                }
+                
+                const table = document.createElement('table');
+                table.innerHTML = `
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Para</th>
+                            <th>Asunto</th>
+                            <th>Contenido</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                `;
+                const tbody = table.querySelector('tbody');
+                
+                emails.forEach(email => {
+                    const row = tbody.insertRow();
+                    row.innerHTML = `
+                        <td style="vertical-align: top; white-space: nowrap;">${new Date(email.receivedAt).toLocaleString()}</td>
+                        <td style="vertical-align: top;">${email.to}</td>
+                        <td style="vertical-align: top;">${email.subject}</td>
+                        <td><pre style="white-space: pre-wrap; margin: 0;">${email.body}</pre></td>
+                    `;
+                });
+                
+                inboxDiv.appendChild(table);
+                
+            } catch (error) {
+                inboxDiv.textContent = `Error al cargar la bandeja de entrada: ${error.message}`;
+            }
+        }
+
+        // Email individual
+        document.getElementById('emailForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const data = {
+                to: document.getElementById('to').value,
+                subject: document.getElementById('subject').value,
+                body: document.getElementById('body').value
+            };
+
+            try {
+                const response = await fetch(`/email`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                
+                document.getElementById('response').textContent = JSON.stringify(result, null, 2);
+                
+                if (result.alertScript) {
+                    document.getElementById('codeSection').style.display = 'block';
+                    document.getElementById('generatedCode').textContent = result.alertScript;
+                    
+                    const scriptElement = document.createElement('div');
+                    scriptElement.innerHTML = result.alertScript;
+                    document.body.appendChild(scriptElement);
+                }
+                
+                fetchInbox(); // Refrescar bandeja de entrada
+                
+            } catch (error) {
+                document.getElementById('response').textContent = `Error: ${error.message}`;
+            }
+        });
+
+        // Email masivo
+        document.getElementById('massEmailForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const recipients = document.getElementById('recipients').value.split(',').map(r => r.trim());
+            const data = {
+                recipients: recipients,
+                subject: document.getElementById('massSubject').value,
+                content: document.getElementById('massContent').value
+            };
+
+            try {
+                const response = await fetch(`/email/sendmailmasivo`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                
+                document.getElementById('response').textContent = JSON.stringify(result, null, 2);
+                
+                if (result.alertScript) {
+                    document.getElementById('codeSection').style.display = 'block';
+                    document.getElementById('generatedCode').textContent = result.alertScript;
+                    
+                    const scriptElement = document.createElement('div');
+                    scriptElement.innerHTML = result.alertScript;
+                    document.body.appendChild(scriptElement);
+                }
+                
+                fetchInbox(); // Refrescar bandeja de entrada
+
+            } catch (error) {
+                document.getElementById('response').textContent = `Error: ${error.message}`;
+            }
+        });
+
+        refreshInboxBtn.addEventListener('click', fetchInbox);
+
+        // Carga inicial
+        document.addEventListener('DOMContentLoaded', fetchInbox);
+    </script>
+</body>
+</html> 

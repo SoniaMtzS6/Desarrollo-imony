@@ -9,12 +9,14 @@ Inicia todos los servidores con gestión automática de dependencias:
 - API Server (puerto 3000)
 - Email Server (puerto 3001)
 - Pomelo Mock (puerto 3002)
+- Settlements Server (puerto 3003)
 
 ### 2. `start-servers.sh`
 Inicia todos los servidores directamente (sin instalar dependencias):
 - API Server (puerto 3000)
 - Email Server (puerto 3001)
 - Pomelo Mock (puerto 3002)
+- Settlements Server (puerto 3003)
 
 ### 3. `start-pomelo.sh`
 Inicia solo el servidor Pomelo Mock (puerto 3002)
@@ -52,6 +54,27 @@ Una vez iniciados los servidores, puedes probar:
 - **API Server**: http://localhost:3000/api/user/v1
 - **Email Server**: http://localhost:3001/email
 - **Pomelo Mock**: http://localhost:3002/pomelo/token
+- **Settlements Server**: http://localhost:3003/api/settlements/health
+
+## Servidor de Settlements
+
+El servidor de Settlements (puerto 3003) proporciona endpoints para generar reportes de settlements vs transacciones:
+
+### Endpoints Principales:
+- `GET /api/settlements/report` - Reporte combinado
+- `GET /api/settlements/settlements` - Solo settlements
+- `GET /api/settlements/transactions` - Solo transacciones
+- `GET /api/settlements/health` - Health check
+
+### Configuración:
+El servidor requiere configuración de Pomelo en variables de entorno:
+```bash
+export POMELO_BASE_URL=https://api.pomelo.la
+export POMELO_CLIENT_ID=your-client-id
+export POMELO_CLIENT_SECRET=your-client-secret
+export POMELO_USERNAME=your-username
+export POMELO_PASSWORD=your-password
+```
 
 ## Diferencias con la versión Windows
 
@@ -86,4 +109,14 @@ ps aux | grep node
 ### Para matar procesos manualmente:
 ```bash
 pkill -f "node.*index.js"
+```
+
+### Si el servidor de Settlements no inicia:
+```bash
+# Verificar dependencias
+cd settlements-server
+npm install
+
+# Verificar configuración
+echo $POMELO_CLIENT_ID
 ``` 

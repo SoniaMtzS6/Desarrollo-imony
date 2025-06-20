@@ -26,6 +26,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $telefono = $_POST['telefono'] ?? '';
     $idEmpresa = $_POST['idEmpresa'] ?? '';
     $perfil = $_POST['perfil'] ?? '';
+    $activo = 1; // Por defecto, el administrador se crea como activo
+    $fecha_creacion = date('Y-m-d H:i:s');
+    $is_password_temporary = 1; // La contraseña es temporal
     
     try {
         $conn = getDbConnection();
@@ -34,8 +37,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $password = password_hash('123456', PASSWORD_DEFAULT);
         
         // Preparar la consulta SQL
-        $stmt = $conn->prepare("INSERT INTO administradores (nombre, email, password, telefono, idEmpresa, perfil) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("ssssss", $nombre, $email, $password, $telefono, $idEmpresa, $perfil);
+        $stmt = $conn->prepare("INSERT INTO administradores (nombre, email, password, telefono, idEmpresa, perfil, activo, fecha_creacion, is_password_temporary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("ssssssisi", $nombre, $email, $password, $telefono, $idEmpresa, $perfil, $activo, $fecha_creacion, $is_password_temporary);
         
         if ($stmt->execute()) {
             header("Location: ../administradores.php?creada=1");

@@ -73,7 +73,7 @@ try {
     $conn = getDbConnection();
     
     // Obtener información del usuario
-    $stmt = $conn->prepare("SELECT * FROM user WHERE id = ?");
+    $stmt = $conn->prepare("SELECT * FROM user WHERE id_ = ?");
     $stmt->bind_param("i", $id);
     $stmt->execute();
     $res = $stmt->get_result();

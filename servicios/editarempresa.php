@@ -70,18 +70,3 @@ if ($stmt->execute()) {
 
 $stmt->close();
 $conn->close();
-
-<hr>
-<h3>Carga de saldo</h3>
-<form method="post" action="actualiza_saldo.php">
-    <input type="hidden" name="idempresa" value="<?= htmlspecialchars($idempresa) ?>">
-
-    <label for="monto">Monto:</label>
-    <input type="number" name="monto" id="monto" min="0" step="0.01" required>
-
-    <button type="submit" name="accion" value="asignar" class="btn btn-primary">Asignar monto</button>
-    <button type="submit" name="accion" value="retirar" class="btn btn-danger">Retirar monto</button>
-</form>
-?>
-
-<strong>Saldo actual:</strong> $<?php echo number_format($empresa['saldo_actual'] ?? 0, 2); ?>

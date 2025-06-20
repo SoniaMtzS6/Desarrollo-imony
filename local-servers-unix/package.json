@@ -6,13 +6,15 @@
     "start:api": "\"C:\\Program Files\\nodejs\\node.exe\" api-server/index.js",
     "start:email": "\"C:\\Program Files\\nodejs\\node.exe\" email-server/index.js",
     "start:pomelo": "\"C:\\Program Files\\nodejs\\node.exe\" pomelo-mock/index.js",
-    "start:all": "concurrently \"npm run start:api\" \"npm run start:email\" \"npm run start:pomelo\""
+    "start:settlements": "\"C:\\Program Files\\nodejs\\node.exe\" settlements-server/index.js",
+    "start:all": "concurrently \"npm run start:api\" \"npm run start:email\" \"npm run start:pomelo\" \"npm run start:settlements\""
   },
   "dependencies": {
     "body-parser": "^1.20.3",
     "concurrently": "^8.2.2",
     "cors": "^2.8.5",
     "express": "^4.21.2",
-    "nodemailer": "^6.9.7"
+    "nodemailer": "^6.9.7",
+    "axios": "^1.6.0"
   }
 }

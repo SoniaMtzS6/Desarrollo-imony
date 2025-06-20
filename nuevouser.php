@@ -206,8 +206,8 @@ $codigo = mt_rand(10000000, 99999999);
                                 <div class="mb-3">
                                   <label for="exampleInputtext2" class="form-label">Genero</label>
                                   <select name="genero" class="form-select" aria-label="Default select example">
-                                    <option value="Male"ected>Masculino</option>
-                                    <option value="Feme">Femenino</option>
+                                    <option value="Male" selected>Masculino</option>
+                                    <option value="Female">Femenino</option>
                                   </select>
                                 </div>
                                 <div class="mb-3">
@@ -231,7 +231,7 @@ $codigo = mt_rand(10000000, 99999999);
                               </div>
                               <div class="col-12">
                                 <div class="d-flex align-items-center justify-content-end mt-4 gap-6">
-                                  <button tyoe="submit" class="btn btn-primary">Guardar</button>
+                                  <button type="submit" class="btn btn-primary">Guardar</button>
                                   <button class="btn bg-danger-subtle text-danger">Cancelar</button>
                                 </div>
                               </div>
