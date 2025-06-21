@@ -19,7 +19,7 @@ $codigo = $_POST['digit1'] . $_POST['digit2'] . $_POST['digit3'] .
 // Sanitizar (opcional, por seguridad extra)
 $codigo = trim($codigo);
 
-/* Configuración de PRODUCCIÓN
+// Configuración de PRODUCCIÓN
 // En producción, el código se almacena en la base de datos en el campo dato_extra
 $conn = getDbConnection();
 if ($conn->connect_error) {
@@ -49,9 +49,8 @@ if ($resultado->num_rows === 1) {
     }
 }
 $conn->close();
-*/
 
-// Configuración LOCAL
+/* Configuración LOCAL comentada
 // Verificar el código usando la sesión
 if ($codigo === $_SESSION['token']) {
     // Código correcto: marcar como verificado
@@ -67,4 +66,10 @@ if ($codigo === $_SESSION['token']) {
     header("Location: ../authentication-two-steps.php");
     exit;
 }
+*/
+
+// Si llegamos aquí, el código es incorrecto
+$_SESSION['error'] = "Código incorrecto.";
+header("Location: ../authentication-two-steps.php");
+exit;
 ?>

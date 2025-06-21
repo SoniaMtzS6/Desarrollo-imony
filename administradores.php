@@ -73,7 +73,7 @@ try {
     $tabla = '<tr><td colspan="7" class="text-center">Error al cargar los administradores</td></tr>';
 }
 
-/* Código de PRODUCCIÓN comentado
+// Código de PRODUCCIÓN
 $curl = curl_init();
 
 curl_setopt_array($curl, array(
@@ -98,14 +98,110 @@ curl_setopt_array($curl, array(
 $response = curl_exec($curl);
 curl_close($curl);
 
+// Procesar la respuesta de la API
 if ($response) {
     $data = json_decode($response, true);
-    $totalPages = $data['totalPages'] ?? 1;
-    if (isset($data['data'][0])) {
-        foreach ($data['data'] as $user) {
-            // ... código de producción para mostrar administradores ...
+    if (isset($data['data']) && is_array($data['data'])) {
+        foreach ($data['data'] as $admin) {
+            // Formatear el estado del administrador
+            $estado = $admin['activo'] ? 
+                '<span class="badge bg-success custom-badge hstack justify-content-center p-0 ms-auto">Activo</span>' : 
+                '<span class="badge bg-danger custom-badge hstack justify-content-center p-0 ms-auto">Inactivo</span>';
+            
+            $tabla .= '<tr>
+                    <td class="ps-0">
+                        <form>
+                            <div class="hstack gap-2">
+                                <input class="form-check-input mt-0" type="checkbox" value="" aria-label="Checkbox for following text input" name="keyword" id="templates">
+                                <label for="keyword" class="fs-3 fw-semibold text-dark">'.$admin['nombre'].'</label>
+                            </div>
+                        </form>
+                    </td>
+                    <td>
+                        <div class="d-flex justify-content-end">'.$admin['codigo_admin'].'</div>
+                    </td>
+                    <td>
+                        <div class="d-flex justify-content-end">'.$admin['email'].'</div>
+                    </td>
+                    <td>'.$admin['empresa_nombre'].'</td>
+                    <td>'.$admin['perfil'].'</td>
+                    <td>
+                        <p class="mb-0 fw-medium text-dark fs-3 text-end">'.date('d/m/Y', strtotime($admin['fecha_creacion'])).'</p>
+                    </td>
+                    <td>'.$estado.'</td>
+                    <td class="pe-0">
+                        <a href="editadministrador.php?id='.$admin['id'].'" class="btn btn-primary d-flex align-items-center gap-1">Editar</a>
+                    </td>
+                </tr>';
         }
+        
+        // Obtener información de paginación
+        $totalPages = $data['totalPages'] ?? 1;
+    } else {
+        $tabla = '<tr><td colspan="8" class="text-center">No se encontraron administradores</td></tr>';
     }
+} else {
+    $tabla = '<tr><td colspan="8" class="text-center">Error al cargar los administradores</td></tr>';
+}
+
+/* Código local comentado
+try {
+    $conn = getDbConnection();
+    
+    // Obtener el total de registros
+    $totalResult = $conn->query("SELECT COUNT(*) as total FROM administradores WHERE eliminado = 0");
+    $totalRow = $totalResult->fetch_assoc();
+    $total = $totalRow['total'];
+    $totalPages = ceil($total / $size);
+    
+    // Obtener los registros de la página actual con el nombre de la empresa
+    $query = "SELECT a.*, e.NOMBRE_EMPRESA 
+              FROM administradores a 
+              LEFT JOIN empresas e ON a.idEmpresa = e.ID_EMPRESA
+              WHERE a.eliminado = 0 
+              ORDER BY a.id DESC 
+              LIMIT ? OFFSET ?";
+              
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("ii", $size, $offset);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    while ($admin = $result->fetch_assoc()) {
+        // Formatear el estado del administrador
+        $estado = $admin['activo'] ? 
+            '<span class="badge bg-success custom-badge hstack justify-content-center p-0 ms-auto">Activo</span>' : 
+            '<span class="badge bg-danger custom-badge hstack justify-content-center p-0 ms-auto">Inactivo</span>';
+        
+        $tabla .= '<tr>
+                <td class="ps-0">
+                    <form>
+                        <div class="hstack gap-2">
+                            <input class="form-check-input mt-0" type="checkbox" value="" aria-label="Checkbox for following text input" name="keyword" id="templates">
+                            <label for="keyword" class="fs-3 fw-semibold text-dark">'.$admin['nombre'].'</label>
+                        </div>
+                    </form>
+                </td>
+                <td>
+                    <div class="d-flex justify-content-end">'.$admin['codigo_admin'].'</div>
+                </td>
+                <td>
+                    <div class="d-flex justify-content-end">'.$admin['email'].'</div>
+                </td>
+                <td>'.$admin['NOMBRE_EMPRESA'].'</td>
+                <td>'.$admin['perfil'].'</td>
+                <td>
+                    <p class="mb-0 fw-medium text-dark fs-3 text-end">'.date('d/m/Y', strtotime($admin['fecha_creacion'])).'</p>
+                </td>
+                <td>'.$estado.'</td>
+                <td class="pe-0">
+                    <a href="editadministrador.php?id='.$admin['id'].'" class="btn btn-primary d-flex align-items-center gap-1">Editar</a>
+                </td>
+            </tr>';
+    }
+} catch (Exception $e) {
+    error_log("Error al obtener administradores: " . $e->getMessage());
+    $tabla = '<tr><td colspan="7" class="text-center">Error al cargar los administradores</td></tr>';
 }
 */
 ?>

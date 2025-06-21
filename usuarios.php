@@ -25,7 +25,7 @@ $totalPages = 0;
 $page = isset($_GET['page']) ? intval($_GET['page']) : 0;
 $size = 10;
 
-/* Código de PRODUCCIÓN comentado
+// Código de PRODUCCIÓN
 // Inicializar CURL
 $curl = curl_init();
 
@@ -51,119 +51,71 @@ curl_setopt_array($curl, array(
 // Ejecutar CURL
 $response = curl_exec($curl);
 curl_close($curl);
-*/
 
-// Código local
-try {
-    $conn = getDbConnection();
-    if ($conn->connect_error) {
-        die("Error de conexión: " . $conn->connect_error);
-    }
+// Procesar la respuesta de la API
+if ($response) {
+    $data = json_decode($response, true);
+    if (isset($data['data']) && is_array($data['data'])) {
+        foreach ($data['data'] as $user) {
+            $userId = $user['id'] ?? '';
+            $userName = ($user['name'] ?? '') . ' ' . ($user['surname'] ?? '');
+            $userEmail = $user['email'] ?? '';
+            $userdate = $user['create_time'] ?? '';
+            $id_empresa = $user['id_empresa'] ?? null;
+            
+            $status = $user['status'] ?? '';
+            $statusBadge = '';
+            switch ($status) {
+                case 'ACTIVE':
+                    $statusBadge = '<span class="badge bg-success custom-badge hstack justify-content-center p-0 ms-auto">Activo</span>';
+                    break;
+                case 'BLOCKED':
+                    $statusBadge = '<span class="badge bg-warning custom-badge hstack justify-content-center p-0 ms-auto">Bloqueado</span>';
+                    break;
+                case 'DELETED':
+                    $statusBadge = '<span class="badge bg-danger custom-badge hstack justify-content-center p-0 ms-auto">Eliminado</span>';
+                    break;
+                default:
+                    $statusBadge = '<span class="badge bg-secondary custom-badge hstack justify-content-center p-0 ms-auto">Inactivo</span>';
+                    break;
+            }
 
-    // Obtener todas las empresas
-    $empresas = [];
-    $query = "SELECT id_empresa, NOMBRE_EMPRESA FROM empresas";
-    $result = $conn->query($query);
-    while ($row = $result->fetch_assoc()) {
-        $empresas[$row['id_empresa']] = $row['NOMBRE_EMPRESA'];
-    }
+            $nombreEmpresa = $user['empresa_nombre'] ?? 'Empresa no asignada';
 
-    // Calcular el offset para la paginación
-    $offset = $page * $size;
-
-    // Construir condiciones para la consulta
-    $whereConditions = [];
-    $whereConditions[] = "u.status != 'DELETED'"; // Excluir usuarios eliminados
-
-    // Modificar la consulta según el perfil del usuario
-    if (isset($_SESSION["usuario"]["perfil"]) && $_SESSION["usuario"]["perfil"] !== "Superadministrador") {
-        if (isset($_SESSION["usuario"]["id_empresa"])) {
-            $id_empresa = intval($_SESSION["usuario"]["id_empresa"]);
-            $whereConditions[] = "u.id_empresa = " . $id_empresa;
+            $tabla .= '<tr>
+                        <td class="ps-0">
+                            <form>
+                                <div class="hstack gap-2">
+                                    <input class="form-check-input mt-0" type="checkbox" value="" aria-label="Checkbox for following text input" name="keyword" id="templates">
+                                    <label for="keyword" class="fs-3 fw-semibold text-dark">'.$userName.'</label>
+                                </div>
+                            </form>
+                        </td>
+                        <td>
+                            <div class="d-flex justify-content-end">'.$user['codigo_user'].'</div>
+                        </td>
+                        <td>
+                            <div class="d-flex justify-content-end">'.$userEmail.'</div>
+                        </td>
+                        <td>'.$nombreEmpresa.'</td>
+                        <td>'.date('d/m/Y', strtotime($userdate)).'</td>
+                        <td>'.$statusBadge.'</td>
+                        <td>
+                            <a href="asignartarjeta.php?id='.$userId.'" class="btn btn-primary d-flex align-items-center gap-1">Asignar</a>
+                        </td>
+                        <td class="pe-0">
+                            <a href="edituser.php?id='.$userId.'" class="btn btn-primary d-flex align-items-center gap-1">Ver</a>
+                        </td>
+                    </tr>';
         }
-    }
-
-    $whereClause = "";
-    if (!empty($whereConditions)) {
-        $whereClause = " WHERE " . implode(" AND ", $whereConditions);
-    }
-
-    // Consulta SQL con las condiciones
-    $sql = "SELECT u.*, e.NOMBRE_EMPRESA FROM user u LEFT JOIN empresas e ON u.id_empresa = e.id_empresa" . $whereClause;
-    $countSql = "SELECT COUNT(*) as total FROM user u" . $whereClause;
-
-    // Agregar límite y offset para paginación
-    $sql .= " ORDER BY create_time DESC LIMIT $size OFFSET $offset";
-
-    // Obtener el total de registros
-    $totalResult = $conn->query($countSql);
-    $totalRow = $totalResult->fetch_assoc();
-    $total = $totalRow['total'];
-    $totalPages = ceil($total / $size);
-
-    // Ejecutar la consulta principal
-    $result = $conn->query($sql);
-
-    // Construir la tabla de usuarios
-    while ($user = $result->fetch_assoc()) {
-        $userId = $user['id_'];
-        $userName = $user['name'] . ' ' . $user['surname'];
-        $userEmail = $user['email'];
-        $userdate = $user['create_time'];
-        $id_empresa = isset($user['id_empresa']) ? $user['id_empresa'] : null;
         
-        $status = $user['status'];
-        $statusBadge = '';
-        switch ($status) {
-            case 'ACTIVE':
-                $statusBadge = '<span class="badge bg-success custom-badge hstack justify-content-center p-0 ms-auto">Activo</span>';
-                break;
-            case 'BLOCKED':
-                $statusBadge = '<span class="badge bg-warning custom-badge hstack justify-content-center p-0 ms-auto">Bloqueado</span>';
-                break;
-            case 'DELETED':
-                $statusBadge = '<span class="badge bg-danger custom-badge hstack justify-content-center p-0 ms-auto">Eliminado</span>';
-                break;
-            default:
-                $statusBadge = '<span class="badge bg-secondary custom-badge hstack justify-content-center p-0 ms-auto">Inactivo</span>';
-                break;
-        }
-
-        $nombreEmpresa = ($id_empresa && isset($empresas[$id_empresa])) ? $empresas[$id_empresa] : 'Empresa no asignada';
-
-        $tabla .= '<tr>
-                    <td class="ps-0">
-                        <form>
-                            <div class="hstack gap-2">
-                                <input class="form-check-input mt-0" type="checkbox" value="" aria-label="Checkbox for following text input" name="keyword" id="templates">
-                                <label for="keyword" class="fs-3 fw-semibold text-dark">'.$userName.'</label>
-                            </div>
-                        </form>
-                    </td>
-                    <td>
-                        <div class="d-flex justify-content-end">'.$user['codigo_user'].'</div>
-                    </td>
-                    <td>
-                        <div class="d-flex justify-content-end">'.$userEmail.'</div>
-                    </td>
-                    <td>'.$nombreEmpresa.'</td>
-                    <td>'.date('d/m/Y', strtotime($userdate)).'</td>
-                    <td>'.$statusBadge.'</td>
-                    <td>
-                        <a href="asignartarjeta.php?id='.$userId.'" class="btn btn-primary d-flex align-items-center gap-1">Asignar</a>
-                    </td>
-                    <td class="pe-0">
-                        <a href="edituser.php?id='.$userId.'" class="btn btn-primary d-flex align-items-center gap-1">Ver</a>
-                    </td>
-                </tr>';
+        // Obtener información de paginación
+        $totalPages = $data['meta']['totalPages'] ?? 1;
+    } else {
+        $tabla = '<tr><td colspan="8" class="text-center">No se encontraron usuarios</td></tr>';
     }
-} catch (Exception $e) {
-    error_log("Error al obtener usuarios: " . $e->getMessage());
-    $tabla = '<tr><td colspan="7" class="text-center">Error al cargar los usuarios</td></tr>';
-} finally {
-    if (isset($conn)) {
-        $conn->close();
-    }
+} else {
+    $tabla = '<tr><td colspan="8" class="text-center">Error al cargar los usuarios</td></tr>';
 }
 ?>
 

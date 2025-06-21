@@ -11,10 +11,11 @@ $gasto = $_GET['gasto'] ?? '';
 $retiro_saldo = $_GET['retiro_saldo'] ?? '';
 $retiro_compra = $_GET['retiro_compra'] ?? '';
 $saldo_disponible = $_GET['saldo_disponible'] ?? '';
-$fecha = $_GET['fecha'] ?? '';
+$fecha_inicio = $_GET['fecha_inicio'] ?? '';
+$fecha_fin = $_GET['fecha_fin'] ?? '';
 
 $accounts = [];
-$stmt = $conn->prepare("SELECT id_account FROM users WHERE id_empresa = ?");
+$stmt = $conn->prepare("SELECT id_account FROM user WHERE id_empresa = ?");
 $stmt->bind_param("i", $idEmpresa);
 $stmt->execute();
 $result = $stmt->get_result();
@@ -25,7 +26,15 @@ $stmt->close();
 if (count($accounts) === 0) die('No hay cuentas relacionadas.');
 $accountsIn = implode(",", $accounts);
 
-$sqlMovimientos = "SELECT entry_type, account_id, result, process_type, type, created_at, total_amount as monto FROM activity WHERE account_id IN ($accountsIn) ORDER BY created_at ASC";
+$sqlMovimientos = "SELECT entry_type, account, result, process_type, type, datetime as created_at, total_amount as monto FROM activity WHERE account IN ($accountsIn)";
+if ($fecha_inicio && $fecha_fin) {
+    $sqlMovimientos .= " AND DATE(datetime) BETWEEN '" . $conn->real_escape_string($fecha_inicio) . "' AND '" . $conn->real_escape_string($fecha_fin) . "'";
+} elseif ($fecha_inicio) {
+    $sqlMovimientos .= " AND DATE(datetime) >= '" . $conn->real_escape_string($fecha_inicio) . "'";
+} elseif ($fecha_fin) {
+    $sqlMovimientos .= " AND DATE(datetime) <= '" . $conn->real_escape_string($fecha_fin) . "'";
+}
+$sqlMovimientos .= " ORDER BY created_at ASC";
 $result = $conn->query($sqlMovimientos);
 
 $saldoInicialt=0;
@@ -66,7 +75,6 @@ while ($row = $result->fetch_assoc()) {
     if ($retiro_saldo !== '' && stripos((string)$retirossolo, $retiro_saldo) === false) $mostrar_fila = false;
     if ($retiro_compra !== '' && stripos((string)$retiroscomprassolo, $retiro_compra) === false) $mostrar_fila = false;
     if ($saldo_disponible !== '' && stripos((string)$saldoinit, $saldo_disponible) === false) $mostrar_fila = false;
-    if ($fecha !== '' && $fecha_mov !== $fecha) $mostrar_fila = false;
     if ($mostrar_fila) {
         $rows[] = [
             $saldoInicialt,

@@ -6,6 +6,8 @@ include 'functions.php';
 session_start();
 
 $status_update = $_GET['status_update'] ?? '';
+$status = $_GET['status'] ?? '';
+$error = $_GET['error'] ?? '';
 
 // Validar sesión iniciada
 if (!isset($_SESSION["usuario"])) {
@@ -25,6 +27,7 @@ $id = isset($_GET['id']) ? $_GET['id'] : null;
 $acc = isset($_GET['acc']) ? $_GET['acc'] : null;
 
 $user = null; // Inicializar la variable $user
+$saldo_usuario = 0; // Inicializar saldo del usuario
 
 // Si no viene acc, lo buscamos en la base de datos
 if ($id) {
@@ -42,6 +45,17 @@ if ($id) {
         }
     }
     $stmt_user->close();
+
+    // Obtener el saldo total del usuario de la tabla de movimientos
+    $stmt_saldo = $conn->prepare("SELECT SUM(monto) as saldo_total FROM usuarios_movimientos WHERE id_user = ?");
+    $stmt_saldo->bind_param("s", $id); // id_user es varchar
+    $stmt_saldo->execute();
+    $result_saldo = $stmt_saldo->get_result();
+    if ($row_saldo = $result_saldo->fetch_assoc()) {
+        $saldo_usuario = $row_saldo['saldo_total'] ?? 0;
+    }
+    $stmt_saldo->close();
+
 
     if (!$acc) {
         // Intentar buscar 'id_account' si no se encontró antes
@@ -106,6 +120,8 @@ if (!$id || !$acc) {
 // === FIN BLOQUE DE PRODUCCIÓN ORIGINAL ===
 
 // === INICIO BLOQUE NUEVO PARA LOCAL Y PRODUCCIÓN (NO ELIMINAR EL ANTERIOR) ===
+$saldo_formateado = number_format($saldo_usuario, 2);
+
 $estadoCuenta = '
 <div class="card border shadow-none">
   <div class="card-body p-4">
@@ -125,7 +141,7 @@ $estadoCuenta = '
               <label class="form-check-label" for="switch-bloqueo-tarjeta"></label>
             </div>
           </div>
-          <h5 class="fs-4 fw-semibold">$ 0</h5>
+          <h5 class="fs-4 fw-semibold">$ ' . $saldo_formateado . '</h5>
         </div>
       </div>
       <a class="text-dark fs-6 d-flex align-items-center justify-content-center bg-transparent p-2 fs-4 rounded-circle" href="javascript:void(0)" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Add"></a>
@@ -137,6 +153,10 @@ $estadoCuenta = '
   </div>
 </div>
 ';
+
+// === INICIO BLOQUE DE PRODUCCIÓN ORIGINAL ===
+// Código de producción que ya funcionaba:
+/*
 $cargaSaldo = '
 <div class="card border shadow-none">
   <div class="card-body p-4">
@@ -160,6 +180,40 @@ $cargaSaldo = '
   </div>
 </div>
 ';
+*/
+// === FIN BLOQUE DE PRODUCCIÓN ORIGINAL ===
+
+// === INICIO BLOQUE NUEVO PARA LOCAL ===
+// Código nuevo para entorno local:
+$cargaSaldo = '
+<div class="card border shadow-none">
+  <div class="card-body p-4">
+    <h4 class="card-title">Carga de saldo</h4>
+    <p class="card-subtitle">Introduce el saldo a la tarjeta o retíralo.</p>
+    <form method="POST" action="servicios/procesar_monto_tarjeta.php">
+      <input type="hidden" name="id_user" value="' . htmlspecialchars($id) . '">
+      <div class="d-flex align-items-center gap-3 mb-3 mt-7">
+        <div class="text-bg-light rounded-1 p-6 d-flex align-items-center justify-content-center">
+          <i class="ti text-dark d-block fs-7" width="22" height="22"></i>
+        </div>
+        <div>
+          <label class="mb-0">Monto</label>
+          <input type="number" name="monto" class="form-control" placeholder="$" step="0.01" min="0" required>
+        </div>
+      </div>
+      <div class="mb-3">
+        <label class="mb-0">Comentario (opcional)</label>
+        <input type="text" name="comentario" class="form-control" placeholder="Comentario sobre la operación">
+      </div>
+      <div class="d-flex align-items-center gap-3">
+        <button type="submit" name="accion" value="asignar" class="btn btn-primary">Asignar monto</button>
+        <button type="submit" name="accion" value="retirar" class="btn bg-danger-subtle text-danger">Retirar monto</button>
+      </div>
+    </form>
+  </div>
+</div>
+';
+// === FIN BLOQUE NUEVO PARA LOCAL ===
 $tarjetascliente = $estadoCuenta . $cargaSaldo . '
 <div class="card border shadow-none">
   <div class="card-body p-4">
@@ -434,6 +488,29 @@ if ($isLocal) {
           <?php if ($status_update === 'success'): ?>
             <div class="alert alert-success" role="alert">
               ¡El estado del usuario se ha actualizado correctamente!
+            </div>
+          <?php endif; ?>
+          
+          <?php if ($status === 'success'): ?>
+            <div class="alert alert-success" role="alert">
+              ¡La operación de monto se ha realizado correctamente!
+            </div>
+          <?php endif; ?>
+          
+          <?php if ($error): ?>
+            <div class="alert alert-danger" role="alert">
+              <?php 
+                switch($error) {
+                    case 'datos_invalidos':
+                        echo 'Error: Los datos proporcionados no son válidos.';
+                        break;
+                    case 'transaccion_fallida':
+                        echo 'Error: La transacción no se pudo completar.';
+                        break;
+                    default:
+                        echo 'Error: ' . htmlspecialchars($error);
+                }
+              ?>
             </div>
           <?php endif; ?>
           <div class="mb-4">

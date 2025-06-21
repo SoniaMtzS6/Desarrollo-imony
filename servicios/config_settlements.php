@@ -28,7 +28,7 @@ if (file_exists(__DIR__ . '/.env')) {
 define('SETTLEMENTS_ENV', getenv('SETTLEMENTS_ENV') ?: 'production'); // 'local' o 'production'
 
 // URLs de los servicios
-define('SETTLEMENTS_LAMBDA_URL', getenv('SETTLEMENTS_LAMBDA_URL') ?: 'https://your-api-gateway-url.amazonaws.com/prod');
+define('SETTLEMENTS_LAMBDA_URL', getenv('SETTLEMENTS_LAMBDA_URL') ?: 'https://37kylcuth7.execute-api.us-east-2.amazonaws.com/DEV');
 define('SETTLEMENTS_LOCAL_URL', getenv('SETTLEMENTS_LOCAL_URL') ?: 'http://localhost:3003');
 
 // Configuración de timeout

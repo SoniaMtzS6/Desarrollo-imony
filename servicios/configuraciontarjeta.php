@@ -14,8 +14,7 @@ if ($_SESSION["usuario"]["doblefactor"] !== "1") {
     exit;
 }
 
-// Código de producción comentado
-/*
+// Código de producción
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? null;
     $id = $_POST['id'] ?? null;
@@ -94,9 +93,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo "Acción no válida.";
     }
 }
-*/
 
-// Código local
+/* Código local comentado
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? null;
     $id = $_POST['id'] ?? null;
@@ -124,4 +122,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     $conn->close();
 }
+*/
 ?>

@@ -68,8 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $jsonData = json_encode($data, JSON_PRETTY_PRINT);
     echo $jsonData;
 
-    // Código de producción comentado
-    /*
+    // Código de producción
     $curl = curl_init();
     curl_setopt_array($curl, array(
         CURLOPT_URL => 'https://37kylcuth7.execute-api.us-east-2.amazonaws.com/DEV/user/api/v1',
@@ -93,9 +92,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     curl_close($curl);
 
     $data = json_decode($response, true); 
-    */
     
-    // Código local
+    /* Código local comentado
     try {
         $conn = getDbConnection();
         
@@ -222,6 +220,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $conn->close();
         }
     }
+    */
     exit;
 } else {
     echo "No se recibió ninguna solicitud POST.";

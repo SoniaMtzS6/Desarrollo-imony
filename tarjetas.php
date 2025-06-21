@@ -5,12 +5,10 @@ $curl = curl_init();
 
 curl_setopt_array($curl, array(
   // URL de PRODUCCIÓN
-  /*
   CURLOPT_URL => 'https://vdn0w81bc0.execute-api.us-east-2.amazonaws.com/dev/card/api/v1/?page[number]=1&page[size]=10',
-  */
   
-  // URL LOCAL
-  CURLOPT_URL => 'http://localhost:3000/api/card/v1/?page[number]=1&page[size]=10',
+  // URL LOCAL comentada
+  // CURLOPT_URL => 'http://localhost:3000/api/card/v1/?page[number]=1&page[size]=10',
   CURLOPT_RETURNTRANSFER => true,
   CURLOPT_ENCODING => '',
   CURLOPT_MAXREDIRS => 10,

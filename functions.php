@@ -16,41 +16,35 @@ function getDbConnection() {
 // ENDPOINTS EXTERNOS CENTRALIZADOS
 function getApiBaseUrl() {
     // URL LOCAL
-    return "http://localhost:3000/api";
+    // return "http://localhost:3000/api";
 
-    /* URL de PRODUCCIÓN
+    // URL de PRODUCCIÓN
     return "https://37kylcuth7.execute-api.us-east-2.amazonaws.com/DEV";
-    */
 }
 
 function getEmailServiceUrl() {
     // URL LOCAL
-    return "http://localhost:3001/email";
+    // return "http://localhost:3001/email";
 
-    /* URL de PRODUCCIÓN
+    // URL de PRODUCCIÓN
     return "https://v6g3vgism2.execute-api.us-east-2.amazonaws.com/dev/sendmailmasivo";
-    */
 }
 
 // FUNCIONES PARA URLS DE SERVICIOS CURL
 function getServiceUrl1() {
     // URL de PRODUCCIÓN
-    /*
     return "https://37kylcuth7.execute-api.us-east-2.amazonaws.com/DEV";
-    */
 
     // URL LOCAL
-    return "http://localhost:3000/api";
+    // return "http://localhost:3000/api";
 }
 
 function getServiceUrl2() {
     // URL de PRODUCCIÓN
-    /*
     return "https://v6g3vgism2.execute-api.us-east-2.amazonaws.com/dev/sendmailmasivo";
-    */
 
     // URL LOCAL
-    return "http://localhost:3001/email";
+    // return "http://localhost:3001/email";
 }
 
 // GENERAR TOKEN POMELO CENTRALIZADO

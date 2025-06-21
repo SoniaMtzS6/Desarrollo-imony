@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-/* Código de PRODUCCIÓN comentado
+// Código de PRODUCCIÓN
 $data = array(
     "nombre" => $nombre,
     "email" => $email,
@@ -95,10 +95,35 @@ if (isset($data['OK'])) {
     echo "Tu usuarios es el: ".$data['OK'];
      header("Location: ../administradores.php?creada=1");
      exit;
-}else{
+} else {
     echo "no se cargo con exito";
     header("Location: ../administradores.php?creada=1");
     exit;
+}
+
+/* Código local comentado
+try {
+    $conn = getDbConnection();
+    
+    // Generar un password por defecto (puede ser cambiado después)
+    $password = password_hash('123456', PASSWORD_DEFAULT);
+    
+    // Preparar la consulta SQL
+    $stmt = $conn->prepare("INSERT INTO administradores (nombre, email, password, telefono, idEmpresa, perfil, activo, fecha_creacion, is_password_temporary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    $stmt->bind_param("ssssssisi", $nombre, $email, $password, $telefono, $idEmpresa, $perfil, $activo, $fecha_creacion, $is_password_temporary);
+    
+    if ($stmt->execute()) {
+        header("Location: ../administradores.php?creada=1");
+        exit;
+    } else {
+        echo "Error al crear el administrador: " . $stmt->error;
+    }
+    
+    $stmt->close();
+    $conn->close();
+    
+} catch (Exception $e) {
+    echo "Error: " . $e->getMessage();
 }
 */
 ?>

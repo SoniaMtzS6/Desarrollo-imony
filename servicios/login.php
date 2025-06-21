@@ -50,6 +50,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             ];
 
             // Código local para enviar email
+            /*
             $curl = curl_init();
             curl_setopt_array($curl, array(
                 CURLOPT_URL => 'http://localhost:3001/email',
@@ -69,8 +70,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     'Content-Type: application/json'
                 ),
             ));
+            */
 
-            /* Código de PRODUCCIÓN comentado
+            // Código de PRODUCCIÓN
+            $curl = curl_init();
             curl_setopt_array($curl, array(
                 CURLOPT_URL => 'https://v6g3vgism2.execute-api.us-east-2.amazonaws.com/dev/sendMail',
                 CURLOPT_RETURNTRANSFER => true,
@@ -89,7 +92,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     'Content-Type: application/json'
                 ),
             ));
-            */
 
             $response = curl_exec($curl);
             curl_close($curl);

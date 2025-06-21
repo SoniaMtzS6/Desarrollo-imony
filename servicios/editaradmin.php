@@ -43,11 +43,10 @@ try {
     $accion = $_POST['accion'] ?? '';
 
     if ($accion === 'bloquear') {
-        // Código de producción comentado
-        /*
+        // Código de producción
         // Aquí iría la llamada a la API de producción para bloquear/desbloquear
-        */
-        // Código local
+        
+        /* Código local comentado
         $stmt = $conn->prepare("SELECT activo FROM administradores WHERE id = ?");
         $stmt->bind_param("i", $idadmin);
         $stmt->execute();
@@ -62,14 +61,14 @@ try {
         $conn->close();
         header("Location: ../administradores.php?status=bloqueado");
         exit;
+        */
     }
 
     if ($accion === 'eliminar') {
-        // Código de producción comentado
-        /*
+        // Código de producción
         // Aquí iría la llamada a la API de producción para eliminar lógicamente
-        */
-        // Código local
+        
+        /* Código local comentado
         $stmt = $conn->prepare("UPDATE administradores SET eliminado = 1 WHERE id = ?");
         $stmt->bind_param("i", $idadmin);
         $stmt->execute();
@@ -77,9 +76,11 @@ try {
         $conn->close();
         header("Location: ../administradores.php?status=eliminado");
         exit;
+        */
     }
 
     // Actualizar datos del administrador SOLO si no es bloquear/eliminar
+    /* Código local comentado
     $stmt = $conn->prepare("
         UPDATE administradores SET 
             nombre = ?, 
@@ -109,9 +110,46 @@ try {
     } else {
         echo "Error al actualizar administrador: " . $stmt->error;
     }
+    */
 
 } catch (Exception $e) {
     echo "Error: " . $e->getMessage();
+}
+
+// Código de PRODUCCIÓN
+$curl = curl_init();
+
+curl_setopt_array($curl, array(
+  CURLOPT_URL => 'https://9kjot10cte.execute-api.us-east-2.amazonaws.com/dev/admin/update',
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_ENCODING => '',
+  CURLOPT_MAXREDIRS => 10,
+  CURLOPT_TIMEOUT => 0,
+  CURLOPT_FOLLOWLOCATION => true,
+  CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+  CURLOPT_CUSTOMREQUEST => 'PUT',
+  CURLOPT_POSTFIELDS => json_encode([
+    'idAdmin' => $idadmin,
+    'nombre' => $nombre,
+    'email' => $email,
+    'telefono' => $telefono,
+    'direccion' => $direccion,
+    'perfil' => $perfil,
+    'idEmpresa' => $id_empresa
+  ]),
+  CURLOPT_HTTPHEADER => array(
+    'Content-Type: application/json'
+  ),
+));
+
+$response = curl_exec($curl);
+curl_close($curl);
+
+if ($response) {
+    header("Location: ../administradores.php?status=updated");
+    exit;
+} else {
+    echo "Error al actualizar el administrador";
 }
 
 /* Código de PRODUCCIÓN comentado

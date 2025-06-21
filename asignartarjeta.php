@@ -4,8 +4,7 @@ include 'functions.php';
 $id = $_GET['id'] ?? null;
 $showModal = isset($_GET['success']) && $_GET['success'] == 1;
 
-// Código de producción comentado
-/*
+// Código de producción
 $tokenid = "";
 $curl = curl_init();
 
@@ -66,9 +65,8 @@ if ($response) {
         }
     }
 }
-*/
 
-// Código local
+/* Código local comentado
 try {
     $conn = getDbConnection();
     
@@ -108,6 +106,7 @@ try {
         $conn->close();
     }
 }
+*/
 ?>
 
 <!DOCTYPE html>

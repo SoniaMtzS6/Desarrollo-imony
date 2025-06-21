@@ -1,9 +1,0 @@
-{
-  "name": "crear-movimiento",
-  "version": "1.0.0",
-  "description": "Lambda para crear movimientos de saldo",
-  "main": "index.js",
-  "dependencies": {
-    "mysql2": "^3.6.0"
-  }
-} 
