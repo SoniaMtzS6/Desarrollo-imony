@@ -1,0 +1,18 @@
+{
+  "name": "adminfinister-local-servers",
+  "version": "1.0.0",
+  "description": "Servidores locales para desarrollo de Adminfinister",
+  "scripts": {
+    "start:api": "\"C:\\Program Files\\nodejs\\node.exe\" api-server/index.js",
+    "start:email": "\"C:\\Program Files\\nodejs\\node.exe\" email-server/index.js",
+    "start:pomelo": "\"C:\\Program Files\\nodejs\\node.exe\" pomelo-mock/index.js",
+    "start:all": "concurrently \"npm run start:api\" \"npm run start:email\" \"npm run start:pomelo\""
+  },
+  "dependencies": {
+    "body-parser": "^1.20.3",
+    "concurrently": "^8.2.2",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "nodemailer": "^6.9.7"
+  }
+}

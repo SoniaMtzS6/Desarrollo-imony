@@ -1,0 +1,15 @@
+-- Selecciona la base de datos
+USE finister;
+
+-- Crea la tabla movimientos_saldo
+CREATE TABLE movimientos_saldo (
+    ID INT AUTO_INCREMENT PRIMARY KEY,
+    ID_EMPRESA INT NOT NULL,
+    MONTO DECIMAL(10,2) NOT NULL,
+    TIPO ENUM('asignacion', 'retiro') NOT NULL,
+    FECHA DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ID_USUARIO INT NOT NULL,
+    COMENTARIO VARCHAR(255) DEFAULT NULL,
+    FOREIGN KEY (ID_EMPRESA) REFERENCES empresas(ID_EMPRESA),
+    FOREIGN KEY (ID_USUARIO) REFERENCES users(ID_USUARIO)
+);

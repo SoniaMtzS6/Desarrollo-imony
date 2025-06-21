@@ -1,0 +1,56 @@
+-- Estructura de la base de datos para fisinter
+
+-- Tabla empresas
+CREATE TABLE empresas (
+    ID_EMPRESA INT AUTO_INCREMENT PRIMARY KEY,
+    NOMBRE_EMPRESA VARCHAR(255) NOT NULL,
+    RFC VARCHAR(13) NOT NULL,
+    ALIAS VARCHAR(255),
+    PAIS VARCHAR(100),
+    ESTADO VARCHAR(100),
+    CODIGO_POSTAL VARCHAR(10),
+    MONTO_MAXIMO DECIMAL(15,2) DEFAULT 0,
+    NUMERO_TARJETAS INT DEFAULT 0,
+    ESTATUS ENUM('ACTIVE','INACTIVE') DEFAULT 'ACTIVE',
+    FECHA_REGISTRO DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tabla usuarios
+CREATE TABLE usuarios (
+    ID INT AUTO_INCREMENT PRIMARY KEY,
+    idL VARCHAR(50) UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    birthdate DATE,
+    idEmpresa INT,
+    idAccount VARCHAR(50),
+    doblefactor ENUM('0','1') DEFAULT '0',
+    FOREIGN KEY (idEmpresa) REFERENCES empresas(ID_EMPRESA)
+);
+
+-- Tabla administradores
+CREATE TABLE administradores (
+    ID_ADMIN INT AUTO_INCREMENT PRIMARY KEY,
+    NOMBRE VARCHAR(255) NOT NULL,
+    EMAIL VARCHAR(255) UNIQUE NOT NULL,
+    PASSWORD VARCHAR(255) NOT NULL,
+    PERFIL ENUM('Superadministrador','Administrador') NOT NULL,
+    ID_EMPRESA INT,
+    FOREIGN KEY (ID_EMPRESA) REFERENCES empresas(ID_EMPRESA)
+);
+
+-- Tabla tarjetas
+CREATE TABLE tarjetas (
+    ID_TARJETA INT AUTO_INCREMENT PRIMARY KEY,
+    ID_USUARIO INT,
+    NUMERO_TARJETA VARCHAR(255),
+    ESTADO ENUM('Activa','Inactiva','Pendiente') DEFAULT 'Pendiente',
+    FECHA_ASIGNACION DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (ID_USUARIO) REFERENCES usuarios(ID)
+);
+
+-- Insertar un superadministrador por defecto
+INSERT INTO empresas (NOMBRE_EMPRESA) VALUES ('Empresa Principal');
+INSERT INTO administradores (NOMBRE, EMAIL, PASSWORD, PERFIL, ID_EMPRESA)
+VALUES ('Admin', 'admin@admin.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Superadministrador', 1); 
