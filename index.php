@@ -70,7 +70,7 @@
                       <input type="checkbox" class="form-check-input" id="exampleCheck1" checked>
                       <label class="form-check-label" for="exampleCheck1">Mantenerme en sesion</label>
                     </div>
-                    <button type="submit" class="btn btn-primary w-100 py-8 rounded-pill">Aceder</button>
+                    <button type="submit" class="btn btn-primary w-100 py-8 rounded-pill">Acceder</button>
                   </form>
                   <div class="position-relative text-center my-4">
                     <p class="mb-0 px-3 d-inline-block bg-body z-index-5 position-relative">

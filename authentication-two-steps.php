@@ -1,10 +1,10 @@
 <?php
 session_start();
 
-// Validar que exista la sesión
+// Validar que exista la sesión de usuario. Si no, redirigir al login.
 if (!isset($_SESSION["usuario"])) {
-    die("Acceso no autorizado. Sesión no iniciada.");
     header("Location: index.php");
+    exit; // Asegurarse de que el script se detiene después de la redirección
 }
 
 
@@ -131,6 +131,60 @@ $correo = enmascararCorreo($correo);
       })
       .catch(error => console.error('Error:', error));
   }
+
+  // Función para manejar la navegación automática entre casillas
+  document.addEventListener('DOMContentLoaded', function() {
+    const inputs = document.querySelectorAll('.codigo');
+    
+    inputs.forEach((input, index) => {
+      // Manejar entrada de dígitos
+      input.addEventListener('input', function(e) {
+        const value = e.target.value;
+        
+        // Solo permitir números
+        if (!/^\d*$/.test(value)) {
+          e.target.value = '';
+          return;
+        }
+        
+        // Si se ingresó un dígito, mover al siguiente input
+        if (value.length === 1 && index < inputs.length - 1) {
+          inputs[index + 1].focus();
+        }
+      });
+      
+      // Manejar tecla de borrado (Backspace)
+      input.addEventListener('keydown', function(e) {
+        if (e.key === 'Backspace' && e.target.value === '' && index > 0) {
+          // Si la casilla está vacía y presiona backspace, ir a la anterior
+          inputs[index - 1].focus();
+        }
+      });
+      
+      // Manejar teclas de flecha
+      input.addEventListener('keydown', function(e) {
+        if (e.key === 'ArrowLeft' && index > 0) {
+          inputs[index - 1].focus();
+        } else if (e.key === 'ArrowRight' && index < inputs.length - 1) {
+          inputs[index + 1].focus();
+        }
+      });
+      
+      // Pegar código completo
+      input.addEventListener('paste', function(e) {
+        e.preventDefault();
+        const pastedData = (e.clipboardData || window.clipboardData).getData('text');
+        const digits = pastedData.replace(/\D/g, '').slice(0, 6);
+        
+        if (digits.length === 6) {
+          inputs.forEach((input, i) => {
+            input.value = digits[i] || '';
+          });
+          inputs[5].focus(); // Enfocar la última casilla
+        }
+      });
+    });
+  });
 </script>
   
   <!-- Import Js Files -->

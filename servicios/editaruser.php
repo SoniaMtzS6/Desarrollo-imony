@@ -19,12 +19,6 @@ if ($_SESSION["usuario"]["doblefactor"] !== "1") {
     exit;
 }
 
-// Conexión a la base de datos
-
-
-
-
-
 $conn = getDbConnection();
 if ($conn->connect_error) {
     die("Error de conexión: " . $conn->connect_error);
@@ -32,41 +26,80 @@ if ($conn->connect_error) {
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $id = $_POST["iduser"] ?? null;
-    $nombre = $_POST["nombre"] ?? '';
-    $empresa = $_POST["empresa"] ?? '';
-    $email = $_POST["email"] ?? '';
-    $genero = $_POST["genero"] ?? '';
-    $fecha = $_POST["fecha"] ?? '';
-    $telefono = $_POST["phone"] ?? '';
+    $action = $_POST["action"] ?? 'guardar'; // Por defecto es 'guardar'
 
-    if (!$id || empty($nombre) || empty($email)) {
-        die("Faltan datos obligatorios.");
+    if (!$id) {
+        die("Falta el ID de usuario.");
     }
 
-    // Intentar primero con 'user', si falla probar con 'users'
-    try {
-        $stmt = $conn->prepare("UPDATE user SET name = ?, id_empresa = ?, email = ?, gender = ?, birthdate = ?, phone = ? WHERE id_ = ?");
-        if (!$stmt) throw new Exception($conn->error);
-    } catch (Exception $e) {
-        // Si falla, intentamos con 'users'
-        try {
-            $stmt = $conn->prepare("UPDATE users SET name = ?, id_empresa = ?, email = ?, gender = ?, birthdate = ?, phone = ? WHERE id_ = ?");
-            if (!$stmt) throw new Exception($conn->error);
-        } catch (Exception $e2) {
+    $tableName = '';
+    // Intentar determinar el nombre de la tabla
+    $resUser = $conn->query("SHOW TABLES LIKE 'user'");
+    if ($resUser->num_rows > 0) {
+        $tableName = 'user';
+    } else {
+        $resUsers = $conn->query("SHOW TABLES LIKE 'users'");
+        if ($resUsers->num_rows > 0) {
+            $tableName = 'users';
+        } else {
             die("No se encontró la tabla 'user' ni 'users' en la base de datos.");
         }
     }
 
-    $stmt->bind_param("sissssi", $nombre, $empresa, $email, $genero, $fecha, $telefono, $id);
+    switch ($action) {
+        case 'guardar':
+            $nombre = $_POST["nombre"] ?? '';
+            $empresa = $_POST["empresa"] ?? '';
+            $email = $_POST["email"] ?? '';
+            $genero = $_POST["genero"] ?? '';
+            $fecha = $_POST["fecha"] ?? '';
+            $telefono = $_POST["phone"] ?? '';
 
-    if ($stmt->execute()) {
-        header("Location: ../usuarios.php?status=success");
-        exit;
-    } else {
-        echo "Error al actualizar: " . $stmt->error;
+            if (empty($nombre) || empty($email)) {
+                die("Faltan datos obligatorios para guardar.");
+            }
+
+            $stmt = $conn->prepare("UPDATE {$tableName} SET name = ?, id_empresa = ?, email = ?, gender = ?, birthdate = ?, phone = ? WHERE id_ = ?");
+            $stmt->bind_param("sissssi", $nombre, $empresa, $email, $genero, $fecha, $telefono, $id);
+
+            if ($stmt->execute()) {
+                header("Location: ../usuarios.php?status=success_update");
+            } else {
+                echo "Error al actualizar: " . $stmt->error;
+            }
+            $stmt->close();
+            break;
+
+        case 'bloquear':
+            // Asumiendo que la columna se llama 'status' y el valor para bloqueado es 'blocked'
+            $stmt = $conn->prepare("UPDATE {$tableName} SET status = 'blocked' WHERE id_ = ?");
+            $stmt->bind_param("i", $id);
+
+            if ($stmt->execute()) {
+                header("Location: ../usuarios.php?status=success_block");
+            } else {
+                echo "Error al bloquear: " . $stmt->error;
+            }
+            $stmt->close();
+            break;
+
+        case 'eliminar':
+            $stmt = $conn->prepare("DELETE FROM {$tableName} WHERE id_ = ?");
+            $stmt->bind_param("i", $id);
+
+            if ($stmt->execute()) {
+                header("Location: ../usuarios.php?status=success_delete");
+            } else {
+                echo "Error al eliminar: " . $stmt->error;
+            }
+            $stmt->close();
+            break;
+        
+        default:
+            echo "Acción no válida.";
+            break;
     }
 
-    $stmt->close();
 } else {
     echo "Método no permitido.";
 }

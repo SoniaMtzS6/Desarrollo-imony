@@ -1,12 +1,31 @@
 <?php
 // CONEXIÓN CENTRALIZADA A LA BASE DE DATOS
 function getDbConnection() {
+    /*
+    // --- Para desarrollo LOCAL, descomenta este bloque y comenta el de producción ---
     $servername = "localhost";
     $username = "root";
     $password = "";
-    $dbname = "finister";
-
+    $dbname = "finisterra"; // o finister
     $conn = new mysqli($servername, $username, $password, $dbname);
+    if ($conn->connect_error) {
+        die("Fallo de conexión: " . $conn->connect_error);
+    }
+    return $conn;
+    // --- Fin bloque LOCAL ---
+    */
+
+    // --- Para PRODUCCIÓN en AWS, usa este bloque ---
+    // NOTA: Lo ideal es usar variables de entorno en lugar de credenciales directamente en el código.
+    $host = "finister.cfeq6oo6ouvl.us-east-2.rds.amazonaws.com";
+    $usuarioDB = "fisinteradmin";
+    $passwordDB = "RuG22twX7x6Nufxpdaxo";
+    $nombreDB = "fisinter";
+
+    // Crear conexión para producción
+    $conn = new mysqli($host, $usuarioDB, $passwordDB, $nombreDB);
+
+    //$conn = new mysqli("localhost", "root", "", "finisterra");
     if ($conn->connect_error) {
         die("Connection failed: " . $conn->connect_error);
     }
@@ -51,7 +70,7 @@ function getServiceUrl2() {
 function getPomeloToken() {
     $curl = curl_init();
 
-    // Configuración LOCAL
+    /* Configuración LOCAL
     curl_setopt_array($curl, array(
         CURLOPT_URL => 'http://localhost:3002/pomelo/token',
         CURLOPT_RETURNTRANSFER => true,
@@ -71,8 +90,9 @@ function getPomeloToken() {
             'Content-Type: application/json'
         ),
     ));
+    */
 
-    /* Configuración de PRODUCCIÓN
+    // Configuración de PRODUCCIÓN
     curl_setopt_array($curl, array(
         CURLOPT_URL => 'https://api.pomelo.la/oauth/token',
         CURLOPT_RETURNTRANSFER => true,
@@ -82,17 +102,17 @@ function getPomeloToken() {
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         CURLOPT_CUSTOMREQUEST => 'POST',
-        CURLOPT_POSTFIELDS => json_encode([
-            "client_id" => "cxq8Yq6wFgE53FxOzgHAGrCzRe5n4KgL",
-            "client_secret" => "hfGy54beNj08H6v7AnvTgo2g5zYGXZ9kyTdtpEHs5b_Vzgv1WDypnyFUz6273YO9",
-            "audience" => "https://auth-prod.pomelo.la",
-            "grant_type" => "client_credentials"
-        ]),
+        CURLOPT_POSTFIELDS =>'{
+            "client_id": "cxq8Yq6wFgE53FxOzgHAGrCzRe5n4KgL",
+            "client_secret": "hfGy54beNj08H6v7AnvTgo2g5zYGXZ9kyTdtpEHs5b_Vzgv1WDypnyFUz6273YO9",
+            "audience": "https://auth-prod.pomelo.la",
+            "grant_type": "client_credentials"
+        }',
         CURLOPT_HTTPHEADER => array(
             'Content-Type: application/json'
         ),
     ));
-    */
+    
 
     $response = curl_exec($curl);
     curl_close($curl);

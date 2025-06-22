@@ -32,11 +32,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $usuario = $resultado->fetch_assoc();
 
         // Validar la contraseña usando password_verify
-        if (password_verify($password, $usuario["password"])) {
+        //if (password_verify($password, $usuario["password"])) {
+        if ($password == $usuario["password"]) {
             // Generar token de 6 dígitos
             $token = str_pad(random_int(0, 999999), 6, "0", STR_PAD_LEFT);
             
-            // Guardar token en sesión
+            // Guardar token en campo dato_extra
+            $updateStmt = $conn->prepare("UPDATE administradores SET dato_extra = ? WHERE id = ?");
+            $updateStmt->bind_param("si", $token, $usuario["id"]);
+            $updateStmt->execute();
+            $updateStmt->close();
+
+
+            // Guardar token en sesión para local
+            /*
             $_SESSION['token'] = $token;
 
             // Guardar datos en sesión
@@ -95,6 +104,17 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             $response = curl_exec($curl);
             curl_close($curl);
+
+            // Guardar datos en sesión
+            $_SESSION["usuario"] = [
+                "id" => $usuario["id"],
+                "email" => $usuario["email"],
+                "nombre" => $usuario["nombre"],
+                "perfil" => $usuario["perfil"],
+                "id_empresa" => $usuario["idEmpresa"],
+                "doblefactor" => "0"
+            ];
+
 
             // Redirigir al segundo paso de autenticación
             header("Location: ../authentication-two-steps.php");

@@ -19,15 +19,23 @@ $codigo = $_POST['digit1'] . $_POST['digit2'] . $_POST['digit3'] .
 // Sanitizar (opcional, por seguridad extra)
 $codigo = trim($codigo);
 
-// Configuración de PRODUCCIÓN
-// En producción, el código se almacena en la base de datos en el campo dato_extra
+// Conexión a la base de datos
+
+
+
+
+
 $conn = getDbConnection();
+
+// Verificar conexión
 if ($conn->connect_error) {
     die("Error de conexión: " . $conn->connect_error);
 }
 
 $idUsuario = $_SESSION["usuario"]["id"];
-$stmt = $conn->prepare("SELECT dato_extra FROM administradores WHERE ID_ADMIN = ?");
+
+// Obtener el dato_extra actual del usuario
+$stmt = $conn->prepare("SELECT dato_extra FROM administradores WHERE id = ?");
 $stmt->bind_param("i", $idUsuario);
 $stmt->execute();
 $resultado = $stmt->get_result();
@@ -38,38 +46,25 @@ if ($resultado->num_rows === 1) {
     $tokenGuardado = $row["dato_extra"];
 
     if ($codigo === $tokenGuardado) {
-        $update = $conn->prepare("UPDATE administradores SET dato_extra = '' WHERE ID_ADMIN = ?");
+        // Código correcto: limpiar dato_extra y activar doblefactor
+        $update = $conn->prepare("UPDATE administradores SET dato_extra = '' WHERE id = ?");
         $update->bind_param("i", $idUsuario);
         $update->execute();
         $update->close();
 
         $_SESSION["usuario"]["doblefactor"] = "1";
+
+        // Redirigir al dashboard
         header("Location: ../usuarios.php");
         exit;
+    } else {
+        echo "Código incorrecto.";
+        header("Location: ../authentication-two-steps.php");
     }
-}
-$conn->close();
-
-/* Configuración LOCAL comentada
-// Verificar el código usando la sesión
-if ($codigo === $_SESSION['token']) {
-    // Código correcto: marcar como verificado
-    $_SESSION["usuario"]["doblefactor"] = "1";
-    unset($_SESSION['token']); // Limpiar el token usado
-
-    // Redirigir al dashboard
-    header("Location: ../usuarios.php");
-    exit;
 } else {
-    // Código incorrecto
-    $_SESSION['error'] = "Código incorrecto.";
+    echo "Usuario no encontrado.";
     header("Location: ../authentication-two-steps.php");
-    exit;
 }
-*/
 
-// Si llegamos aquí, el código es incorrecto
-$_SESSION['error'] = "Código incorrecto.";
-header("Location: ../authentication-two-steps.php");
-exit;
+$conn->close();
 ?>

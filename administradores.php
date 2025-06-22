@@ -1,79 +1,25 @@
 <?php 
+session_start();
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
+// Validar que el usuario está en sesión.
+if (!isset($_SESSION["usuario"])) {
+    header("Location: index.php");
+    exit;
+}
+
 require_once 'functions.php';
 
 // Inicializar variables
-$tabla = "";
-$totalPages = 0;
-
-// Configuración de paginación
+$tabla = '<tr><td colspan="8" class="text-center">No se encontraron administradores.</td></tr>';
+$totalPages = 1;
 $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
 $size = 10;
-$offset = ($page - 1) * $size;
+$idEmpresa = $_SESSION["usuario"]["id_empresa"] ?? 0;
 
-try {
-    $conn = getDbConnection();
-    
-    // Obtener el total de registros
-    $totalResult = $conn->query("SELECT COUNT(*) as total FROM administradores WHERE eliminado = 0");
-    $totalRow = $totalResult->fetch_assoc();
-    $total = $totalRow['total'];
-    $totalPages = ceil($total / $size);
-    
-    // Obtener los registros de la página actual con el nombre de la empresa
-    $query = "SELECT a.*, e.NOMBRE_EMPRESA 
-              FROM administradores a 
-              LEFT JOIN empresas e ON a.idEmpresa = e.ID_EMPRESA
-              WHERE a.eliminado = 0 
-              ORDER BY a.id DESC 
-              LIMIT ? OFFSET ?";
-              
-    $stmt = $conn->prepare($query);
-    $stmt->bind_param("ii", $size, $offset);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    while ($admin = $result->fetch_assoc()) {
-        // Formatear el estado del administrador
-        $estado = $admin['activo'] ? 
-            '<span class="badge bg-success custom-badge hstack justify-content-center p-0 ms-auto">Activo</span>' : 
-            '<span class="badge bg-danger custom-badge hstack justify-content-center p-0 ms-auto">Inactivo</span>';
-        
-        $tabla .= '<tr>
-                <td class="ps-0">
-                    <form>
-                        <div class="hstack gap-2">
-                            <input class="form-check-input mt-0" type="checkbox" value="" aria-label="Checkbox for following text input" name="keyword" id="templates">
-                            <label for="keyword" class="fs-3 fw-semibold text-dark">'.$admin['nombre'].'</label>
-                        </div>
-                    </form>
-                </td>
-                <td>
-                    <div class="d-flex justify-content-end">'.$admin['codigo_admin'].'</div>
-                </td>
-                <td>
-                    <div class="d-flex justify-content-end">'.$admin['email'].'</div>
-                </td>
-                <td>'.$admin['NOMBRE_EMPRESA'].'</td>
-                <td>'.$admin['perfil'].'</td>
-                <td>
-                    <p class="mb-0 fw-medium text-dark fs-3 text-end">'.date('d/m/Y', strtotime($admin['fecha_creacion'])).'</p>
-                </td>
-                <td>'.$estado.'</td>
-                <td class="pe-0">
-                    <a href="editadministrador.php?id='.$admin['id'].'" class="btn btn-primary d-flex align-items-center gap-1">Editar</a>
-                </td>
-            </tr>';
-    }
-} catch (Exception $e) {
-    error_log("Error al obtener administradores: " . $e->getMessage());
-    $tabla = '<tr><td colspan="7" class="text-center">Error al cargar los administradores</td></tr>';
-}
-
-// Código de PRODUCCIÓN
+// Usaremos el código que proporcionaste como base para la llamada a producción
 $curl = curl_init();
 
 curl_setopt_array($curl, array(
@@ -81,146 +27,79 @@ curl_setopt_array($curl, array(
   CURLOPT_RETURNTRANSFER => true,
   CURLOPT_ENCODING => '',
   CURLOPT_MAXREDIRS => 10,
-  CURLOPT_TIMEOUT => 0,
+  CURLOPT_TIMEOUT => 30, // Pongo un timeout para evitar cargas infinitas
   CURLOPT_FOLLOWLOCATION => true,
   CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-  CURLOPT_CUSTOMREQUEST => 'GET',
-  CURLOPT_POSTFIELDS =>'{
-    "page": '.$page.',
-    "size": '.$size.',
-    "filter": "idEmpresa"
-}',
+  CURLOPT_CUSTOMREQUEST => 'GET', // Usando GET como en tu ejemplo
+  CURLOPT_POSTFIELDS => json_encode([ // Enviando el cuerpo como en tu ejemplo
+    "page" => $page,
+    "size" => $size,
+    "idEmpresa" => $idEmpresa // Enviamos el idEmpresa del usuario logueado
+  ]),
   CURLOPT_HTTPHEADER => array(
     'Content-Type: application/json'
   ),
 ));
 
 $response = curl_exec($curl);
+$err = curl_error($curl);
 curl_close($curl);
 
-// Procesar la respuesta de la API
-if ($response) {
+if ($err) {
+    error_log("cURL Error #:" . $err);
+    $tabla = '<tr><td colspan="8" class="text-center">Error de comunicación con el servicio.</td></tr>';
+} elseif ($response) {
     $data = json_decode($response, true);
-    if (isset($data['data']) && is_array($data['data'])) {
+
+    if (isset($data['data']) && !empty($data['data'])) {
+        $tabla = ""; // Limpiar la tabla antes de llenarla
+    $totalPages = $data['totalPages'] ?? 1;
+
         foreach ($data['data'] as $admin) {
-            // Formatear el estado del administrador
-            $estado = $admin['activo'] ? 
+            $estado = ($admin['activo'] ?? 0) ? 
                 '<span class="badge bg-success custom-badge hstack justify-content-center p-0 ms-auto">Activo</span>' : 
                 '<span class="badge bg-danger custom-badge hstack justify-content-center p-0 ms-auto">Inactivo</span>';
-            
+
+            // Validar la fecha de creación antes de usarla
+            $fecha_formateada = 'N/A';
+            if (!empty($admin['fecha_creacion'])) {
+                $fecha_formateada = date('d/m/Y', strtotime($admin['fecha_creacion']));
+            }
+
             $tabla .= '<tr>
                     <td class="ps-0">
-                        <form>
-                            <div class="hstack gap-2">
-                                <input class="form-check-input mt-0" type="checkbox" value="" aria-label="Checkbox for following text input" name="keyword" id="templates">
-                                <label for="keyword" class="fs-3 fw-semibold text-dark">'.$admin['nombre'].'</label>
-                            </div>
-                        </form>
+                        <div class="hstack gap-2">
+                            <input class="form-check-input mt-0" type="checkbox" value="" aria-label="Checkbox for following text input">
+                            <label class="fs-3 fw-semibold text-dark">'.htmlspecialchars($admin['nombre']).'</label>
+                        </div>
                     </td>
-                    <td>
-                        <div class="d-flex justify-content-end">'.$admin['codigo_admin'].'</div>
-                    </td>
-                    <td>
-                        <div class="d-flex justify-content-end">'.$admin['email'].'</div>
-                    </td>
-                    <td>'.$admin['empresa_nombre'].'</td>
-                    <td>'.$admin['perfil'].'</td>
-                    <td>
-                        <p class="mb-0 fw-medium text-dark fs-3 text-end">'.date('d/m/Y', strtotime($admin['fecha_creacion'])).'</p>
-                    </td>
+                    <td><div class="d-flex justify-content-end">'.htmlspecialchars($admin['codigo_admin'] ?? 'N/A').'</div></td>
+                    <td><div class="d-flex justify-content-end">'.htmlspecialchars($admin['email']).'</div></td>
+                    <td>'.htmlspecialchars($admin['nombreEmpresa'] ?? 'N/A').'</td>
+                    <td>'.htmlspecialchars($admin['perfil']).'</td>
+                    <td>'.$fecha_formateada.'</td>
                     <td>'.$estado.'</td>
                     <td class="pe-0">
-                        <a href="editadministrador.php?id='.$admin['id'].'" class="btn btn-primary d-flex align-items-center gap-1">Editar</a>
+                        <a href="editadministrador.php?id='.htmlspecialchars($admin['id']).'" class="btn btn-primary d-flex align-items-center gap-1">Editar</a>
                     </td>
                 </tr>';
         }
-        
-        // Obtener información de paginación
-        $totalPages = $data['totalPages'] ?? 1;
-    } else {
-        $tabla = '<tr><td colspan="8" class="text-center">No se encontraron administradores</td></tr>';
     }
-} else {
-    $tabla = '<tr><td colspan="8" class="text-center">Error al cargar los administradores</td></tr>';
 }
-
-/* Código local comentado
-try {
-    $conn = getDbConnection();
-    
-    // Obtener el total de registros
-    $totalResult = $conn->query("SELECT COUNT(*) as total FROM administradores WHERE eliminado = 0");
-    $totalRow = $totalResult->fetch_assoc();
-    $total = $totalRow['total'];
-    $totalPages = ceil($total / $size);
-    
-    // Obtener los registros de la página actual con el nombre de la empresa
-    $query = "SELECT a.*, e.NOMBRE_EMPRESA 
-              FROM administradores a 
-              LEFT JOIN empresas e ON a.idEmpresa = e.ID_EMPRESA
-              WHERE a.eliminado = 0 
-              ORDER BY a.id DESC 
-              LIMIT ? OFFSET ?";
-              
-    $stmt = $conn->prepare($query);
-    $stmt->bind_param("ii", $size, $offset);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    while ($admin = $result->fetch_assoc()) {
-        // Formatear el estado del administrador
-        $estado = $admin['activo'] ? 
-            '<span class="badge bg-success custom-badge hstack justify-content-center p-0 ms-auto">Activo</span>' : 
-            '<span class="badge bg-danger custom-badge hstack justify-content-center p-0 ms-auto">Inactivo</span>';
-        
-        $tabla .= '<tr>
-                <td class="ps-0">
-                    <form>
-                        <div class="hstack gap-2">
-                            <input class="form-check-input mt-0" type="checkbox" value="" aria-label="Checkbox for following text input" name="keyword" id="templates">
-                            <label for="keyword" class="fs-3 fw-semibold text-dark">'.$admin['nombre'].'</label>
-                        </div>
-                    </form>
-                </td>
-                <td>
-                    <div class="d-flex justify-content-end">'.$admin['codigo_admin'].'</div>
-                </td>
-                <td>
-                    <div class="d-flex justify-content-end">'.$admin['email'].'</div>
-                </td>
-                <td>'.$admin['NOMBRE_EMPRESA'].'</td>
-                <td>'.$admin['perfil'].'</td>
-                <td>
-                    <p class="mb-0 fw-medium text-dark fs-3 text-end">'.date('d/m/Y', strtotime($admin['fecha_creacion'])).'</p>
-                </td>
-                <td>'.$estado.'</td>
-                <td class="pe-0">
-                    <a href="editadministrador.php?id='.$admin['id'].'" class="btn btn-primary d-flex align-items-center gap-1">Editar</a>
-                </td>
-            </tr>';
-    }
-} catch (Exception $e) {
-    error_log("Error al obtener administradores: " . $e->getMessage());
-    $tabla = '<tr><td colspan="7" class="text-center">Error al cargar los administradores</td></tr>';
-}
-*/
 ?>
 
 <!DOCTYPE html>
 <html lang="en" dir="ltr" data-bs-theme="ligth" data-color-theme="Blue_Theme" data-layout="vertical">
 
 
-<!-- Mirrored from bootstrapdemos.adminmart.com/seodash/dist/dark/page-organic-keywords.html by HTTrack Website Copier/3.x [XR&CO'2014], Mon, 23 Sep 2024 04:46:19 GMT -->
 <head>
   <!-- Required meta tags -->
   <meta charset="UTF-8" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <!-- Favicon icon-->
   <link rel="shortcut icon" type="image/png" href="https://bootstrapdemos.adminmart.com/seodash/dist/assets/images/logos/favicon.png" />
 
-  <!-- Core Css -->
   <link rel="stylesheet" href="assets/css/style.css" />
   <title>Interestellar Admin</title>
 </head>
@@ -234,12 +113,10 @@ try {
     });
   </script>
 <?php endif; ?>
-  <!-- Preloader -->
   <div class="preloader">
     <img src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/images/logos/favicon.png" alt="loader" class="lds-ripple img-fluid" />
   </div>
   <div id="main-wrapper">
-    <!-- Sidebar Start -->
     <?php include 'header.php'; ?>
 
       
@@ -297,48 +174,30 @@ try {
                   <thead class="text-dark fs-4">
                     <tr>
                       <th class="align-top ps-0 w-30">
-                        <form>
                           <div class="d-flex align-items-center gap-2">
-                            <label for="keyword" class="fs-11 text-dark fw-medium">Nombre</label>
+                          <label class="fs-11 text-dark fw-medium">Nombre</label>
                           </div>
-                        </form>
                       </th>
-                      <th class="align-top">
-                        <h6 class="fs-11 fw-medium mb-0 text-end">Código</h6>
-                      </th>
-                      <th class="align-top">
-                        <h6 class="fs-11 fw-medium mb-0 text-end">Correo</h6>
-                      </th>
-                      <th class="align-top">
-                        <h6 class="fs-11 fw-medium mb-0 text-end">Empresa</h6>
-                      </th>
-                      <th class="align-top">
-                        <h6 class="fs-11 fw-medium mb-0 text-end">Rol</h6>
-                      </th>
-                      <th class="align-top">
-                        <h6 class="fs-11 fw-medium mb-0 text-end">Fecha de creacion</h6>
-                      </th>
-                      <th class="align-top">
-                        <h6 class="fs-11 fw-medium mb-0 text-end">Status</h6>
-                      </th>
-                      <th class="align-top w-30 pe-0">
-                        <h6 class="fs-11 fw-medium mb-0">Edicion</h6>
-                      </th>
+                      <th class="align-top"><h6 class="fs-11 fw-medium mb-0 text-end">Código</h6></th>
+                      <th class="align-top"><h6 class="fs-11 fw-medium mb-0 text-end">Correo</h6></th>
+                      <th class="align-top"><h6 class="fs-11 fw-medium mb-0 text-end">Empresa</h6></th>
+                      <th class="align-top"><h6 class="fs-11 fw-medium mb-0 text-end">Rol</h6></th>
+                      <th class="align-top"><h6 class="fs-11 fw-medium mb-0 text-end">Fecha de creacion</h6></th>
+                      <th class="align-top"><h6 class="fs-11 fw-medium mb-0 text-end">Status</h6></th>
+                      <th class="align-top w-30 pe-0"><h6 class="fs-11 fw-medium mb-0">Edicion</h6></th>
                     </tr>
                   </thead>
                   <tbody class="table-group-divider border-primary">
-
                   <?php echo $tabla; ?>
-
                   </tbody>
                 </table>
 
                 <div class="d-flex justify-content-center mt-3">
                   <nav>
                     <ul class="pagination">
-                      <?php for ($i = 0; $i < $totalPages; $i++): ?>
-                        <li class="page-item <?php if (($i+1) == $page) echo 'active'; ?>">
-                          <a class="page-link" href="?page=<?php echo $i + 1; ?>"><?php echo $i + 1; ?></a>
+                      <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+                        <li class="page-item <?php if ($i == $page) echo 'active'; ?>">
+                          <a class="page-link" href="?page=<?php echo $i; ?>"><?php echo $i; ?></a>
                         </li>
                       <?php endfor; ?>
                     </ul>
@@ -351,45 +210,21 @@ try {
           <div class="modal fade" id="empresaCreadaModal" tabindex="-1" aria-labelledby="empresaCreadaModalLabel" aria-hidden="true">
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-          <div class="modal-header text-white">
-            <h5 class="modal-title" id="empresaCreadaModalLabel">¡Éxito!</h5>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                <div class="modal-header text-white"><h5 class="modal-title" id="empresaCreadaModalLabel">¡Éxito!</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+                <div class="modal-body">El administrador se ha creado correctamente.</div>
+                <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cerrar</button></div>
           </div>
-          <div class="modal-body">
-            El administrador se ha creado correctamente.
           </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cerrar</button>
           </div>
+          <div class="text-center py-3"><p class="mb-0">2024 Interestellar derechos</p></div>
         </div>
       </div>
-    </div>
-          <div class="text-center py-3">
-            <p class="mb-0">2024 Interestellar derechos</p>
-          </div>
-        </div>
-      </div>
-      <script>
-  function handleColorTheme(e) {
-    document.documentElement.setAttribute("data-color-theme", e);
-  }
-</script>
-    
     </div>
     <div class="dark-transparent sidebartoggler"></div>
-  </div>
-  <!-- Import Js Files -->
   <script src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/libs/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/libs/simplebar/dist/simplebar.min.js"></script>
-  <!-- <script src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/js/theme/app.dark.init.js"></script> -->
   <script src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/js/theme/theme.js"></script>
-  <!-- <script src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/js/theme/app.min.js"></script> -->
   <script src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/js/theme/sidebarmenu.js"></script>
-
-  <!-- solar icons -->
   <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
 </body>
-
-
-<!-- Mirrored from bootstrapdemos.adminmart.com/seodash/dist/dark/page-organic-keywords.html by HTTrack Website Copier/3.x [XR&CO'2014], Mon, 23 Sep 2024 04:46:20 GMT -->
 </html>

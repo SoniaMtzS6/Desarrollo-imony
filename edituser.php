@@ -1,349 +1,271 @@
+<?php include 'functions.php'; ?>
 <?php
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-include 'functions.php';
-session_start();
 
-$status_update = $_GET['status_update'] ?? '';
-$status = $_GET['status'] ?? '';
-$error = $_GET['error'] ?? '';
+session_start();
 
 // Validar sesión iniciada
 if (!isset($_SESSION["usuario"])) {
-    echo '<div style="color:red;">Redirigiendo a index.php por falta de sesión.</div>';
     header("Location: index.php");
     exit;
 }
 
 // Validar segundo factor de autenticación
 if ($_SESSION["usuario"]["doblefactor"] !== "1") {
-    echo '<div style="color:red;">Redirigiendo a authentication-two-steps.php por doble factor.</div>';
     header("Location: authentication-two-steps.php");
     exit;
 }
 
-$id = isset($_GET['id']) ? $_GET['id'] : null;
-$acc = isset($_GET['acc']) ? $_GET['acc'] : null;
-
-$user = null; // Inicializar la variable $user
-$saldo_usuario = 0; // Inicializar saldo del usuario
-
-// Si no viene acc, lo buscamos en la base de datos
-if ($id) {
-    $conn = getDbConnection();
-    
-    // Obtener datos del usuario, incluyendo el estado 'status'
-    $stmt_user = $conn->prepare("SELECT *, status FROM user WHERE id_ = ?");
-    $stmt_user->bind_param("i", $id);
-    $stmt_user->execute();
-    $result_user = $stmt_user->get_result();
-    if ($result_user->num_rows > 0) {
-        $user = $result_user->fetch_assoc();
-        if (!$acc && isset($user['id_account'])) {
-            $acc = $user['id_account'];
-        }
-    }
-    $stmt_user->close();
-
-    // Obtener el saldo total del usuario de la tabla de movimientos
-    $stmt_saldo = $conn->prepare("SELECT SUM(monto) as saldo_total FROM usuarios_movimientos WHERE id_user = ?");
-    $stmt_saldo->bind_param("s", $id); // id_user es varchar
-    $stmt_saldo->execute();
-    $result_saldo = $stmt_saldo->get_result();
-    if ($row_saldo = $result_saldo->fetch_assoc()) {
-        $saldo_usuario = $row_saldo['saldo_total'] ?? 0;
-    }
-    $stmt_saldo->close();
-
-
-    if (!$acc) {
-        // Intentar buscar 'id_account' si no se encontró antes
-        $acc_found = false;
-        try {
-            $stmt = $conn->prepare("SELECT id_account FROM user WHERE id_ = ?");
-            $stmt->bind_param("i", $id);
-            $stmt->execute();
-            $res = $stmt->get_result();
-            if ($row = $res->fetch_assoc()) {
-                $acc = $row['id_account'];
-                $acc_found = true;
-            }
-            $stmt->close();
-        } catch (mysqli_sql_exception $e) {
-            // Manejar excepción si la tabla o columna no existen
-        }
-        if (!$acc_found) {
-            echo "<div style='color:red;'>No se encontró el campo 'id_account' para el usuario con id $id.</div>";
-        }
-    }
-    $conn->close();
-}
-
-$carid = "";
-$hidden = "";
-$token = "";
+$id="";
+$acc="";
+$carid="";
+$hidden="";
+$token="";
 $provider = "";
 $pan = "";
 $expiration = "";
 $status = "";
-$balance = "";
-$currency = "";
-
-if (!$id || !$acc) {
-    echo "<div style='color:red;'>Faltan parámetros requeridos en la URL (id y/o acc).</div>";
-    exit;
+$balance ="";
+$status ="";
+$currency ="";
+if (isset($_GET['id'])) {
+  // Obtiene el valor del parámetro 'id'
+  $id = $_GET['id'];
+  $acc = $_GET['acc'];
+} else {
+  echo "No se proporcionó un ID en la URL.";
 }
 
-// --- LLAMADA A API DE TARJETAS ---
-// === INICIO BLOQUE DE PRODUCCIÓN ORIGINAL ===
-// Código de producción:
-// $curl = curl_init();
-// curl_setopt_array($curl, array(
-//   CURLOPT_URL => 'https://vdn0w81bc0.execute-api.us-east-2.amazonaws.com/dev/card/api/v1/?filter[user_id]='.$id,
-//   CURLOPT_RETURNTRANSFER => true,
-//   CURLOPT_ENCODING => '',
-//   CURLOPT_MAXREDIRS => 10,
-//   CURLOPT_TIMEOUT => 0,
-//   CURLOPT_FOLLOWLOCATION => true,
-//   CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-//   CURLOPT_CUSTOMREQUEST => 'GET',
-//   CURLOPT_HTTPHEADER => array(),
-// ));
-// $response = curl_exec($curl);
-// curl_close($curl);
-// $tarjetascliente = "";
-// if ($response) {
-//     $data = json_decode($response, true);
-//     // ... procesamiento original ...
-// }
-// === FIN BLOQUE DE PRODUCCIÓN ORIGINAL ===
+$curl = curl_init();
 
-// === INICIO BLOQUE NUEVO PARA LOCAL Y PRODUCCIÓN (NO ELIMINAR EL ANTERIOR) ===
-$saldo_formateado = number_format($saldo_usuario, 2);
+curl_setopt_array($curl, array(
+  CURLOPT_URL => 'https://vdn0w81bc0.execute-api.us-east-2.amazonaws.com/dev/card/api/v1/?filter[user_id]='.$id,
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_ENCODING => '',
+  CURLOPT_MAXREDIRS => 10,
+  CURLOPT_TIMEOUT => 0,
+  CURLOPT_FOLLOWLOCATION => true,
+  CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+  CURLOPT_CUSTOMREQUEST => 'GET',
+  CURLOPT_HTTPHEADER => array(
+  ),
+));
 
-$estadoCuenta = '
-<div class="card border shadow-none">
-  <div class="card-body p-4">
-    <h4 class="card-title">Estado de la cuenta : <span class="text-success">ACTIVE</span></h4>
-    <p class="card-subtitle">Puedes consultar el estado de la tarjeta.</p>
-    <div class="d-flex align-items-center justify-content-between mt-7 mb-3">
-      <div class="d-flex align-items-center gap-3">
-        <div class="text-bg-light rounded-1 p-6 d-flex align-items-center justify-content-center">
-          <i class="ti text-dark d-block fs-7" width="22" height="22"></i>
-        </div>
-        <div>
-          <div class="d-flex align-items-center gap-2 mb-1">
-            <span>Monto asignado</span>
-            <!-- Switch de bloqueo -->
-            <div class="form-check form-switch ms-2">
-              <input class="form-check-input" type="checkbox" id="switch-bloqueo-tarjeta" checked>
-              <label class="form-check-label" for="switch-bloqueo-tarjeta"></label>
-            </div>
-          </div>
-          <h5 class="fs-4 fw-semibold">$ ' . $saldo_formateado . '</h5>
-        </div>
-      </div>
-      <a class="text-dark fs-6 d-flex align-items-center justify-content-center bg-transparent p-2 fs-4 rounded-circle" href="javascript:void(0)" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Add"></a>
-    </div>
-    <div class="d-flex align-items-center gap-3">
-      <button class="btn btn-primary">Activar</button>
-      <button class="btn bg-danger-subtle text-danger">Desactivar</button>
-    </div>
-  </div>
-</div>
-';
+$response = curl_exec($curl);
 
-// === INICIO BLOQUE DE PRODUCCIÓN ORIGINAL ===
-// Código de producción que ya funcionaba:
-/*
-$cargaSaldo = '
-<div class="card border shadow-none">
-  <div class="card-body p-4">
-    <h4 class="card-title">Carga de saldo</h4>
-    <p class="card-subtitle">Introduce el saldo a la tarjeta o retíralo.</p>
-    <form>
-      <div class="d-flex align-items-center gap-3 mb-3 mt-7">
-        <div class="text-bg-light rounded-1 p-6 d-flex align-items-center justify-content-center">
-          <i class="ti text-dark d-block fs-7" width="22" height="22"></i>
-        </div>
-        <div>
-          <label class="mb-0">Monto</label>
-          <input type="text" class="form-control" placeholder="$">
-        </div>
-      </div>
-      <div class="d-flex align-items-center gap-3">
-        <button type="button" class="btn btn-primary">Asignar monto</button>
-        <button type="button" class="btn bg-danger-subtle text-danger">Retirar monto</button>
-      </div>
-    </form>
-  </div>
-</div>
-';
-*/
-// === FIN BLOQUE DE PRODUCCIÓN ORIGINAL ===
+curl_close($curl);
+//echo $response;
+$tarjetascliente="";
 
-// === INICIO BLOQUE NUEVO PARA LOCAL ===
-// Código nuevo para entorno local:
-$cargaSaldo = '
-<div class="card border shadow-none">
-  <div class="card-body p-4">
-    <h4 class="card-title">Carga de saldo</h4>
-    <p class="card-subtitle">Introduce el saldo a la tarjeta o retíralo.</p>
-    <form method="POST" action="servicios/procesar_monto_tarjeta.php">
-      <input type="hidden" name="id_user" value="' . htmlspecialchars($id) . '">
-      <div class="d-flex align-items-center gap-3 mb-3 mt-7">
-        <div class="text-bg-light rounded-1 p-6 d-flex align-items-center justify-content-center">
-          <i class="ti text-dark d-block fs-7" width="22" height="22"></i>
-        </div>
-        <div>
-          <label class="mb-0">Monto</label>
-          <input type="number" name="monto" class="form-control" placeholder="$" step="0.01" min="0" required>
-        </div>
-      </div>
-      <div class="mb-3">
-        <label class="mb-0">Comentario (opcional)</label>
-        <input type="text" name="comentario" class="form-control" placeholder="Comentario sobre la operación">
-      </div>
-      <div class="d-flex align-items-center gap-3">
-        <button type="submit" name="accion" value="asignar" class="btn btn-primary">Asignar monto</button>
-        <button type="submit" name="accion" value="retirar" class="btn bg-danger-subtle text-danger">Retirar monto</button>
-      </div>
-    </form>
-  </div>
-</div>
-';
-// === FIN BLOQUE NUEVO PARA LOCAL ===
-$tarjetascliente = $estadoCuenta . $cargaSaldo . '
-<div class="card border shadow-none">
-  <div class="card-body p-4">
-    <h4 class="card-title">Tarjetas asignadas</h4>
-    <p class="card-subtitle">2024-11-06</p>
+if ($response) {
+
+    // Decodificar la respuesta JSON
+    $data = json_decode($response, true); 
+
+    
+   
+    if (isset($data['data'][0]['id'])) { 
+        $cards = [];
+        foreach ($data['data'] as $card) {
+        //$cards[] = $card['id'];
+        //$carid=$data['data'][0]['id'];
+        $carid=$card['id'];
+        echo $carid;
+        $curl = curl_init();
+
+        curl_setopt_array($curl, array(
+          CURLOPT_URL => 'https://api.pomelo.la/oauth/token',
+          CURLOPT_RETURNTRANSFER => true,
+          CURLOPT_ENCODING => '',
+          CURLOPT_MAXREDIRS => 10,
+          CURLOPT_TIMEOUT => 0,
+          CURLOPT_FOLLOWLOCATION => true,
+          CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+          CURLOPT_CUSTOMREQUEST => 'POST',
+          CURLOPT_POSTFIELDS =>'{
+            "client_id": "cxq8Yq6wFgE53FxOzgHAGrCzRe5n4KgL",
+            "client_secret": "hfGy54beNj08H6v7AnvTgo2g5zYGXZ9kyTdtpEHs5b_Vzgv1WDypnyFUz6273YO9",
+            "audience": "https://auth-prod.pomelo.la",
+            "grant_type": "client_credentials"
+        }',
+          CURLOPT_HTTPHEADER => array(
+            'Content-Type: application/json'
+          ),
+        ));
+        
+        $response = curl_exec($curl);
+        
+        curl_close($curl);
+        //  echo $response;
+        
+          if ($response) {
+            $data = json_decode($response, true); 
+            $token=$data['access_token'];
+            //echo $token;
+            if (isset($data['access_token'])) {
+                $curl = curl_init();
+
+                    curl_setopt_array($curl, array(
+                    CURLOPT_URL => 'https://api.pomelo.la/cards/v1/'.$carid.'?extend=cvv%2Cexpiration_date%2Cpan%2Cpin',
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_ENCODING => '',
+                    CURLOPT_MAXREDIRS => 10,
+                    CURLOPT_TIMEOUT => 0,
+                    CURLOPT_FOLLOWLOCATION => true,
+                    CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+                    CURLOPT_CUSTOMREQUEST => 'GET',
+                    CURLOPT_HTTPHEADER => array(
+                        'Authorization: Bearer '.$token
+                      ),
+                    ));
+
+                    $response = curl_exec($curl);
+                    curl_close($curl);
+                    //echo $response;
+
+                    if ($response) {
+                        $data = json_decode($response, true); 
+                        if (isset($data['data']['id'])) {
+                            $provider = $data['data']['provider'];
+                            $pan = chunk_split($data['data']['pan'], 4, ' ');
+                            $expiration = $data['data']['expiration'];
+                            $status = $data['data']['status'];
+                            $start_date = $data['data']['start_date'];
+
+                            $tarjetascliente.='
     <br>
     <div class="d-flex align-items-center justify-content-between mt-7">
       <div class="d-flex align-items-center gap-3">
         <div class="text-bg-light rounded-1 p-6 d-flex align-items-center justify-content-center">
-          <i class="ti text-dark d-block fs-7" width="22" height="22"></i>
+                                <i class="ti  text-dark d-block fs-7" width="22" height="22"></i>
         </div>
         <div>
-          <h5 class="fs-4 fw-semibold">MASTERCARD</h5>
-          <p class="mb-0 text-dark">5366 6929 0638 8450 </p>
-          <p class="mb-0 text-dark">12/30</p>
+                                <h5 class="fs-4 fw-semibold">'.$provider.'</h5>
+                                <p class="mb-0 text-dark">'.$pan.'</p>
+                                <p class="mb-0 text-dark">'.$expiration.'</p>
         </div>
       </div>
-      <a class="text-dark fs-6 d-flex align-items-center justify-content-center bg-transparent p-2 fs-4 rounded-circle" href="javascript:void(0)" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Edit"></a>
-    </div>
-    <div class="d-flex align-items-center gap-3">
-      <form method="POST" action="servicios/configuraciontarjeta.php"> 
-        <input type="hidden" class="form-control" name="card" value="crd-2oUkkltfZQiziu9CgNnluxGPuFi">
-        <input type="hidden" class="form-control" name="usr" value="usr-2wmpryJkInSQhpqv5K0dtZXYq25">
-        <input type="hidden" class="form-control" name="acc" value="acc-2wmpry7iA57dIaglkXNJOeoNQ3g">
-        <button type="submit" class="btn bg-danger-subtle text-danger" name="action" value="asociar">Asociar cuenta</button>
-      </form>
-    </div>
-    <hr>
-    <div class="d-flex align-items-center justify-content-between mt-7">
-      <div class="d-flex align-items-center gap-3">
-        <div class="text-bg-light rounded-1 p-6 d-flex align-items-center justify-content-center">
-          <i class="ti text-dark d-block fs-7" width="22" height="22"></i>
-        </div>
-        <div>
-          <h5 class="fs-4 fw-semibold">VISA</h5>
-          <p class="mb-0 text-dark">4111 1111 1111 1111 </p>
-          <p class="mb-0 text-dark">11/29</p>
-        </div>
-      </div>
-      <a class="text-dark fs-6 d-flex align-items-center justify-content-center bg-transparent p-2 fs-4 rounded-circle" href="javascript:void(0)" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Edit"></a>
-    </div>
-    <div class="d-flex align-items-center gap-3">
-      <form method="POST" action="servicios/configuraciontarjeta.php"> 
-        <input type="hidden" class="form-control" name="card" value="crd-2oUkkltfZQiziu9CgNnluxGPuFj">
-        <input type="hidden" class="form-control" name="usr" value="usr-2wmpryJkInSQhpqv5K0dtZXYq26">
-        <input type="hidden" class="form-control" name="acc" value="acc-2wmpry7iA57dIaglkXNJOeoNQ3h">
-        <button type="submit" class="btn bg-danger-subtle text-danger" name="action" value="asociar">Asociar cuenta</button>
-      </form>
-    </div>
-  </div>
+                            <a class="text-dark fs-6 d-flex align-items-center justify-content-center bg-transparent p-2 fs-4 rounded-circle" href="javascript:void(0)" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Edit">
+                              <!-- <i class="ti ti-pencil-minus"></i> -->
+                            </a>
 </div>
 ';
-// === FIN BLOQUE NUEVO ===
 
-// --- LLAMADA A API DE ACTIVIDADES ---
-// Código de producción:
-// $curl = curl_init();
-// curl_setopt_array($curl, array(
-//   CURLOPT_URL => 'https://h3epgx14k6.execute-api.us-east-2.amazonaws.com/dev/activities/findByAcc',
-//   CURLOPT_RETURNTRANSFER => true,
-//   CURLOPT_ENCODING => '',
-//   CURLOPT_MAXREDIRS => 10,
-//   CURLOPT_TIMEOUT => 0,
-//   CURLOPT_FOLLOWLOCATION => true,
-//   CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-//   CURLOPT_CUSTOMREQUEST => 'POST',
-//   CURLOPT_POSTFIELDS =>'{"acc":"'.$acc.'"}',
-//   CURLOPT_HTTPHEADER => array('Content-type: application/json; charset=UTF-8'),
-// ));
-// $response = curl_exec($curl);
-// curl_close($curl);
-// --- FIN PRODUCCIÓN ---
-// --- LOCAL ---
+
+                        
+                        }
+                    }
+                
 $curl = curl_init();
+
 curl_setopt_array($curl, array(
-    CURLOPT_URL => 'http://localhost:3000/api/activities/findByAcc',
+                      CURLOPT_URL => 'https://api.pomelo.la/core/accounts/v1/'.$acc,
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_ENCODING => '',
     CURLOPT_MAXREDIRS => 10,
     CURLOPT_TIMEOUT => 0,
     CURLOPT_FOLLOWLOCATION => true,
     CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-    CURLOPT_CUSTOMREQUEST => 'POST',
-    CURLOPT_POSTFIELDS => json_encode(["acc" => $acc]),
-    CURLOPT_HTTPHEADER => array('Content-type: application/json; charset=UTF-8'),
-));
+                      CURLOPT_CUSTOMREQUEST => 'GET',
+                      CURLOPT_HTTPHEADER => array(
+                        'Content-type: application/json; charset=UTF-8',
+                        'Authorization: Bearer '.$token
+                      ),
+                    ));
+                    
 $response = curl_exec($curl);
+                    
 curl_close($curl);
-$compra = "";
+                    //echo $response;
 if ($response) {
     $data = json_decode($response, true);
-    if (isset($data['Data']) && count($data['Data']) > 0) {
-        foreach ($data['Data'] as $entry) {
-            $totalAmount = $entry['totalAmount'];
-            $createdAt = $entry['createdAt'];
-            $origin = $entry['origin'];
-            $processType = $entry['processType'];
-            $merchantName = $entry['merchantName'];
-            $compra .= '<div class="d-flex align-items-center justify-content-between mb-4"><div class="d-flex align-items-center gap-3"><div class="text-bg-light rounded-1 p-6 d-flex align-items-center justify-content-center"><i class="ti text-dark d-block fs-7" width="22" height="22"></i></div><div><h5 class="fs-4 fw-semibold">'.$merchantName.' '.$processType.' '.$origin.'</h5><p class="mb-0">Realizada: '.$createdAt.'</p></div></div><div class="form-check form-switch mb-0"><p class="mb-0">'.$totalAmount.'</p></div></div>';
+                        if (isset($data['data']['id'])) {
+                            $balance = $data['data']['balance'];
+                            $status = $data['data']['status'];
+                            $currency = $data['data']['currency'];
+
+                            //<button type="submit" class="btn bg-danger-subtle text-danger" name="action" value="eliminar">Eliminar tarjeta</button>
+
+                            $tarjetascliente.='
+                            
+                            <div class="d-flex align-items-center gap-3">
+                              <form method="POST" action="servicios/configuraciontarjeta.php" > 
+                                  <input type="hidden" class="form-control" name="card" value="'.$carid.'">
+                                  <input type="hidden" class="form-control" name="usr" value="'.$id.'">
+                                  <input type="hidden" class="form-control" name="acc" value="'.$acc.'">
+                                  <button type="submit" class="btn bg-danger-subtle text-danger" name="action" value="asociar">Asociar cuenta</button>
+                              <form>
+                            </div>';
+                        
+                        }
+                    }
+
+
+            }
+          }
         }
-    } else {
-        // MOCK LOCAL REALISTA
-        $notificaciones_mock = [
-            [
-                'merchantName' => 'OXXO',
-                'processType' => 'Compra',
-                'origin' => 'Tienda',
-                'createdAt' => '2024-06-17',
-                'totalAmount' => 50
-            ],
-            [
-                'merchantName' => 'Walmart',
-                'processType' => 'Compra',
-                'origin' => 'Supermercado',
-                'createdAt' => '2024-06-15',
-                'totalAmount' => 1200
-            ],
-            [
-                'merchantName' => 'Starbucks',
-                'processType' => 'Compra',
-                'origin' => 'Café',
-                'createdAt' => '2024-06-10',
-                'totalAmount' => 85
-            ]
-        ];
-        foreach ($notificaciones_mock as $entry) {
-            $compra .= '<div class="d-flex align-items-center justify-content-between mb-4"><div class="d-flex align-items-center gap-3"><div class="text-bg-light rounded-1 p-6 d-flex align-items-center justify-content-center"><i class="ti text-dark d-block fs-7" width="22" height="22"></i></div><div><h5 class="fs-4 fw-semibold">'.$entry['merchantName'].' '.$entry['processType'].' '.$entry['origin'].'</h5><p class="mb-0">Realizada: '.$entry['createdAt'].'</p></div></div><div class="form-check form-switch mb-0"><p class="mb-0">'.$entry['totalAmount'].'</p></div></div>';
-        }
+    }else{
+        $hidden="hidden";
     }
 }
+
+  
+$curl = curl_init();
+
+  curl_setopt_array($curl, array(
+    CURLOPT_URL => 'https://h3epgx14k6.execute-api.us-east-2.amazonaws.com/dev/activities/findByAcc',
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_ENCODING => '',
+    CURLOPT_MAXREDIRS => 10,
+    CURLOPT_TIMEOUT => 0,
+    CURLOPT_FOLLOWLOCATION => true,
+    CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+    CURLOPT_CUSTOMREQUEST => 'GET',
+    CURLOPT_POSTFIELDS =>'{
+      "acc":"'.$acc.'"
+  }',
+    CURLOPT_HTTPHEADER => array(
+      'Content-type: application/json; charset=UTF-8'
+    ),
+  ));
+
+  $response = curl_exec($curl);
+  curl_close($curl);
+  $compra="";
+  if ($response) {
+    $data = json_decode($response, true); 
+
+      foreach ($data['Data'] as $entry) {
+        $totalAmount= $entry['totalAmount'] ?? '';
+        $createdAt= $entry['createdAt'] ?? '';
+        $origin= $entry['origin'] ?? '';
+        $processType= $entry['processType'] ?? '';
+        $merchantName= $entry['merchantName'] ?? 'Sin nombre de comercio';
+
+      $compra.='<div class="d-flex align-items-center justify-content-between mb-4">
+            <div class="d-flex align-items-center gap-3">
+              <div class="text-bg-light rounded-1 p-6 d-flex align-items-center justify-content-center">
+                <i class="ti text-dark d-block fs-7" width="22" height="22"></i>
+              </div>
+              <div>
+                <h5 class="fs-4 fw-semibold">'.$merchantName.' '.$processType.' '.$origin.'</h5>
+                <p class="mb-0">Realizada: '.$createdAt.'</p>
+              </div>
+            </div>
+            <div class="form-check form-switch mb-0">
+              <p class="mb-0">'.$totalAmount.'</p>
+            </div>
+          </div>';
+
+      }  
+    
+    
+    }
+
+
+    
+    
+    
+    
 
 $conn = getDbConnection();
 if ($conn->connect_error) {
@@ -351,11 +273,10 @@ if ($conn->connect_error) {
 }
 
 // Obtener ID de usuario
-$iduser = $_GET['id'] ?? null;
+    $iduser = $_GET['iduser'] ?? null;
 $user = null;
 
 if ($iduser) {
-    $conn = getDbConnection();
     $stmt = $conn->prepare("SELECT * FROM user WHERE id_ = ?");
     $stmt->bind_param("i", $iduser);
     $stmt->execute();
@@ -384,70 +305,15 @@ if($_SESSION["usuario"]["perfil"]==="Superadministrador"){
 }
  
 
-$conn->close();
 
-$isLocal = true; // Forzado para pruebas
-// Debug entorno
-// echo '<pre>$isLocal: ' . ($isLocal ? 'true' : 'false') . '</pre>';
-// echo '<pre>HTTP_HOST: ' . htmlspecialchars($_SERVER['HTTP_HOST']) . '</pre>';
 
-if ($isLocal) {
-    $conn = getDbConnection();
-    $userId = $id; // o la variable que corresponda
-    $sql = "SELECT * FROM tarjetas_local WHERE user_id = ?";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("s", $userId);
-    $stmt->execute();
-    $result = $stmt->get_result();
+    // while ($row = $resEmp->fetch_assoc()) {
+    //     $selected = ($user && $user['id_empresa'] == $row['ID_EMPRESA']) ? 'selected' : '';
+    //     $empresa .= '<option value="' . $row['ID_EMPRESA'] . '" ' . $selected . '>' . $row['NOMBRE_EMPRESA'] . '</option>';
+    // }
 
-    // echo '<pre>Buscando tarjetas para user_id: ' . htmlspecialchars($userId) . '</pre>';
-    // echo '<pre>Filas encontradas: ' . $result->num_rows . '</pre>';
-
-    $tarjetasHTML = '';
-    while ($row = $result->fetch_assoc()) {
-        $tarjetasHTML .= '
-        <div class="d-flex align-items-center justify-content-between mt-7">
-          <div class="d-flex align-items-center gap-3">
-            <div class="text-bg-light rounded-1 p-6 d-flex align-items-center justify-content-center">
-              <i class="ti text-dark d-block fs-7" width="22" height="22"></i>
-            </div>
-            <div>
-              <h5 class="fs-4 fw-semibold">'.htmlspecialchars($row['provider']).'</h5>
-              <p class="mb-0 text-dark">**** **** **** '.htmlspecialchars($row['last_four']).'</p>
-              <p class="mb-0 text-dark">'.htmlspecialchars($row['start_date']).'</p>
-            </div>
-          </div>
-          <a class="text-dark fs-6 d-flex align-items-center justify-content-center bg-transparent p-2 fs-4 rounded-circle" href="javascript:void(0)" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Edit"></a>
-        </div>
-        <div class="d-flex align-items-center gap-3">
-          <form method="POST" action="servicios/configuraciontarjeta.php"> 
-            <input type="hidden" class="form-control" name="card" value="'.htmlspecialchars($row['card_id']).'">
-            <input type="hidden" class="form-control" name="usr" value="'.htmlspecialchars($userId).'">
-            <button type="submit" class="btn bg-danger-subtle text-danger" name="action" value="asociar">Asociar cuenta</button>
-          </form>
-        </div>
-        <hr>
-        ';
-    }
-    $stmt->close();
     $conn->close();
 
-    if ($tarjetasHTML === '') {
-        // Si no hay tarjetas, mostrar el mock visual aprobado
-        $tarjetasHTML = '<div class="d-flex align-items-center justify-content-between mt-7"><div class="d-flex align-items-center gap-3"><div class="text-bg-light rounded-1 p-6 d-flex align-items-center justify-content-center"><i class="ti text-dark d-block fs-7" width="22" height="22"></i></div><div><h5 class="fs-4 fw-semibold">MASTERCARD</h5><p class="mb-0 text-dark">5366 6929 0638 8450 </p><p class="mb-0 text-dark">12/30</p></div></div><a class="text-dark fs-6 d-flex align-items-center justify-content-center bg-transparent p-2 fs-4 rounded-circle" href="javascript:void(0)" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Edit"></a></div><div class="d-flex align-items-center gap-3"><form method="POST" action="servicios/configuraciontarjeta.php"><input type="hidden" class="form-control" name="card" value="crd-2oUkkltfZQiziu9CgNnluxGPuFi"><input type="hidden" class="form-control" name="usr" value="'.htmlspecialchars($userId).'"><button type="submit" class="btn bg-danger-subtle text-danger" name="action" value="asociar">Asociar cuenta</button></form></div><hr>';
-    }
-
-    $tarjetascliente = $estadoCuenta . $cargaSaldo . '
-    <div class="card border shadow-none">
-      <div class="card-body p-4">
-        <h4 class="card-title">Tarjetas asignadas</h4>
-        <p class="card-subtitle">'.date('Y-m-d').'</p>
-        <br>
-        '.$tarjetasHTML.'
-      </div>
-    </div>
-    ';
-}
 
 ?>
 
@@ -461,9 +327,6 @@ if ($isLocal) {
   <meta charset="UTF-8" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-  <!-- Tabler Icons CDN -->
-  <link rel="stylesheet" href="https://unpkg.com/@tabler/icons@latest/iconfont/tabler-icons.min.css">
 
   <!-- Favicon icon-->
   <link rel="shortcut icon" type="image/png" href="https://bootstrapdemos.adminmart.com/seodash/dist/assets/images/logos/favicon.png" />
@@ -485,34 +348,6 @@ if ($isLocal) {
 
       <div class="body-wrapper">
         <div class="container-fluid">
-          <?php if ($status_update === 'success'): ?>
-            <div class="alert alert-success" role="alert">
-              ¡El estado del usuario se ha actualizado correctamente!
-            </div>
-          <?php endif; ?>
-          
-          <?php if ($status === 'success'): ?>
-            <div class="alert alert-success" role="alert">
-              ¡La operación de monto se ha realizado correctamente!
-            </div>
-          <?php endif; ?>
-          
-          <?php if ($error): ?>
-            <div class="alert alert-danger" role="alert">
-              <?php 
-                switch($error) {
-                    case 'datos_invalidos':
-                        echo 'Error: Los datos proporcionados no son válidos.';
-                        break;
-                    case 'transaccion_fallida':
-                        echo 'Error: La transacción no se pudo completar.';
-                        break;
-                    default:
-                        echo 'Error: ' . htmlspecialchars($error);
-                }
-              ?>
-            </div>
-          <?php endif; ?>
           <div class="mb-4">
             <div class="row align-items-center">
               <div class="col-md-6 col-lg-5">
@@ -528,18 +363,21 @@ if ($isLocal) {
           <div class="card">
             <ul class="nav nav-pills user-profile-tab" id="pills-tab" role="tablist">
               <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="pills-account-tab" data-bs-toggle="pill" data-bs-target="#pills-account" type="button" role="tab" aria-controls="pills-account" aria-selected="true" style="color: #fff; background-color: #0d2235;">
-                  Cuenta
+                <button class="nav-link position-relative rounded-0 active d-flex align-items-center justify-content-center bg-transparent fs-3 py-3" id="pills-account-tab" data-bs-toggle="pill" data-bs-target="#pills-account" type="button" role="tab" aria-controls="pills-account" aria-selected="true">
+                  <i class="ti ti-user-circle me-2 fs-6"></i>
+                  <span class="d-none d-md-block">Cuenta</span>
                 </button>
               </li>
-              <li class="nav-item" role="presentation">
-                <button class="nav-link" id="pills-notifications-tab" data-bs-toggle="pill" data-bs-target="#pills-notifications" type="button" role="tab" aria-controls="pills-notifications" aria-selected="false" style="color: #fff; background-color: #0d2235;">
-                  Notificaciones
+              <li class="nav-item" role="presentation" <?php echo $hidden?>>
+                <button class="nav-link position-relative rounded-0 d-flex align-items-center justify-content-center bg-transparent fs-3 py-3" id="pills-notifications-tab" data-bs-toggle="pill" data-bs-target="#pills-notifications" type="button" role="tab" aria-controls="pills-notifications" aria-selected="false">
+                  <i class="ti ti-bell me-2 fs-6"></i>
+                  <span class="d-none d-md-block">Notificaciones</span>
                 </button>
               </li>
-              <li class="nav-item" role="presentation">
-                <button class="nav-link" id="pills-bills-tab" data-bs-toggle="pill" data-bs-target="#pills-bills" type="button" role="tab" aria-controls="pills-bills" aria-selected="false" style="color: #fff; background-color: #0d2235;">
-                  Tarjetas
+              <li class="nav-item" role="presentation" <?php echo $hidden?>>
+                <button class="nav-link position-relative rounded-0 d-flex align-items-center justify-content-center bg-transparent fs-3 py-3" id="pills-bills-tab" data-bs-toggle="pill" data-bs-target="#pills-bills" type="button" role="tab" aria-controls="pills-bills" aria-selected="false">
+                  <i class="ti ti-article me-2 fs-6"></i>
+                  <span class="d-none d-md-block">Tarjetas</span>
                 </button>
               </li>
               <!-- <li class="nav-item" role="presentation">
@@ -551,9 +389,10 @@ if ($isLocal) {
             </ul>
             <div class="card-body">
               <div class="tab-content" id="pills-tabContent">
-                <div class="tab-pane fade show active" id="pills-account" role="tabpanel" aria-labelledby="pills-account-tab">
-                  <!-- Contenido de Cuenta -->
+                <div class="tab-pane fade show active" id="pills-account" role="tabpanel" aria-labelledby="pills-account-tab" tabindex="0">
                   <div class="row">
+                   
+                    
                     <div class="col-12">
                       <div class="card w-100 border position-relative overflow-hidden mb-0">
                         <div class="card-body p-4">
@@ -561,12 +400,14 @@ if ($isLocal) {
                           <p class="card-subtitle mb-4">Para cambiar los detalles de la cuenta, edita y guarda los cambios.</p>
                           <form action="servicios/editaruser.php" method="post">
                             <input type="hidden" name="iduser" value="<?php echo htmlspecialchars($iduser); ?>">
+
                             <div class="row">
                               <div class="col-lg-6">
                                 <div class="mb-3">
                                   <label class="form-label">Nombre</label>
                                   <input type="text" name="nombre" class="form-control" placeholder="Nombre" value="<?php echo htmlspecialchars($user['name'] ?? ''); ?>">
                                 </div>
+
                                 <div class="mb-3">
                                   <label class="form-label">Empresa</label>
                                   <select name="empresa" class="form-select">
@@ -574,11 +415,13 @@ if ($isLocal) {
                                     <?php echo $empresa; ?>
                                   </select>
                                 </div>
+
                                 <div class="mb-3">
                                   <label class="form-label">Email</label>
                                   <input name="email" type="email" class="form-control" placeholder="info@interestellar.com" value="<?php echo htmlspecialchars($user['email'] ?? ''); ?>">
                                 </div>
                               </div>
+
                               <div class="col-lg-6">
                                 <div class="mb-3">
                                   <label class="form-label">Género</label>
@@ -587,82 +430,251 @@ if ($isLocal) {
                                     <option value="Feme" <?php echo ($user['gender'] ?? '') == 'Feme' ? 'selected' : ''; ?>>Femenino</option>
                                   </select>
                                 </div>
+
                                 <div class="mb-3">
                                   <label class="form-label">Fecha de nacimiento</label>
                                   <input name="fecha" type="date" class="form-control" value="<?php echo htmlspecialchars($user['birthdate'] ?? ''); ?>">
                                 </div>
+
                                 <div class="mb-3">
                                   <label class="form-label">Teléfono</label>
                                   <input name="phone" type="text" class="form-control" placeholder="5534516547" value="<?php echo htmlspecialchars($user['phone'] ?? ''); ?>">
                                 </div>
                               </div>
-                            </div>
+                            </div> <!-- cierre correcto de row -->
+
                             <div class="col-12">
-                                <div class="d-flex align-items-center justify-content-end mt-4 gap-6">
-                                    <button type="submit" class="btn btn-primary">Guardar</button>
-                                    <a href="usuarios.php" class="btn bg-danger-subtle text-danger">Cancelar</a>
-                                </div>
+                              <div class="d-flex justify-content-end gap-3 mt-4">
+                                    <button type="submit" name="action" value="guardar" class="btn btn-primary">Guardar</button>
+                                    <button type="submit" name="action" value="bloquear" class="btn btn-warning">Bloquear</button>
+                                    <button type="submit" name="action" value="eliminar" class="btn btn-danger" onclick="return confirm('¿Estás seguro de que quieres eliminar este usuario?');">Eliminar</button>
+                                <a href="../usuarios.php" class="btn btn-secondary">Cancelar</a>
                                 </div>
                             </div>
                           </form>
-                        </div>
-                      </div>
-                      <!-- Sección de Acciones de Usuario -->
-                      <div class="card w-100 border position-relative overflow-hidden mb-0 mt-4">
-                        <div class="card-body p-4">
-                            <h4 class="card-title">Acciones de la cuenta</h4>
-                            <p class="card-subtitle mb-4">Realiza acciones permanentes sobre la cuenta del usuario.</p>
-                            <div class="d-flex gap-3">
-                                <!-- Formulario de Bloqueo/Desbloqueo -->
-                                <form method="POST" action="servicios/editarusuario.php" style="display:inline;">
-                                    <input type="hidden" name="accion" value="bloquear">
-                                    <input type="hidden" name="iduser" value="<?php echo htmlspecialchars($id ?? ''); ?>">
-                                    <?php if (isset($user['status']) && $user['status'] == 'ACTIVE'): ?>
-                                        <button type="submit" class="btn btn-warning">Bloquear Usuario</button>
-                                    <?php else: ?>
-                                        <button type="submit" class="btn btn-success">Desbloquear Usuario</button>
-                                    <?php endif; ?>
-                                </form>
-                                <!-- Formulario de Eliminación -->
-                                <form id="formEliminarUsuario" method="POST" action="servicios/editarusuario.php" style="display:inline;">
-                                    <input type="hidden" name="accion" value="eliminar">
-                                    <input type="hidden" name="iduser" value="<?php echo htmlspecialchars($id ?? ''); ?>">
-                                    <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#modalEliminarUsuario">Eliminar Usuario</button>
-                                </form>
-                            </div>
+
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
-                <div class="tab-pane fade" id="pills-notifications" role="tabpanel" aria-labelledby="pills-notifications-tab">
-                  <!-- Contenido de Notificaciones -->
+                <div class="tab-pane fade" id="pills-notifications" role="tabpanel" aria-labelledby="pills-notifications-tab" tabindex="0">
                   <div class="row justify-content-center">
                     <div class="col-lg-9">
                       <div class="card border shadow-none">
                         <div class="card-body p-4">
                           <h4 class="card-title">Notificaciones</h4>
-                          <p class="card-subtitle mb-4">En este apartado podras ver las notificaciones de compra de cada usuario.</p>
+                          <p class="card-subtitle mb-4">
+                            En este apartado podras ver las notificaciones de compra de cada usuario.
+                          </p>
+                         
                           <div>
+                            
                             <?php echo $compra; ?>
+                            
+                            </div>
+                        </div>
+                      </div>
+                    </div>
+               
+                    <div class="col-lg-9">
+                      <div class="card border shadow-none">
+                        <div class="card-body p-4">
+                          <h4 class="card-title">Saldo</h4>
+                          <p class="card-subtitle">Consulta el saldo asociado</p>
+                          <div class="d-flex align-items-center justify-content-between mt-7">
+                            <div class="d-flex align-items-center gap-3">
+                              <div class="text-bg-light rounded-1 p-6 d-flex align-items-center justify-content-center">
+                                <i class="ti text-dark d-block fs-7" width="22" height="22"></i>
+                  </div>
+                              <div>
+                                <p class="mb-0">Pesos Mexicanos <?php echo $currency; ?></p>
+                                <h5 class="fs-4 fw-semibold">$ <?php echo $balance; ?></h5>
+                </div>
+                            </div>
+                            <a class="text-dark fs-6 d-flex align-items-center justify-content-center bg-transparent p-2 fs-4 rounded-circle" href="javascript:void(0)" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Download">
+                              <!-- <i class="ti ti-download"></i> -->
+                            </a>
                           </div>
                         </div>
                       </div>
                     </div>
+                    
+                    
                   </div>
                 </div>
-                <div class="tab-pane fade" id="pills-bills" role="tabpanel" aria-labelledby="pills-bills-tab">
-                  <!-- Contenido de Tarjetas -->
+                <div class="tab-pane fade" id="pills-bills" role="tabpanel" aria-labelledby="pills-bills-tab" tabindex="0">
                   <div class="row justify-content-center">
+                    
+                    <div class="col-lg-9">
+                      <div class="card border shadow-none">
+                        <div class="card-body p-4">
+                          <h4 class="card-title">Estado de la cuenta : <span class="text-success"><?php echo $status; ?></span>
+                          </h4>
+                          <p class="card-subtitle">Puedes consultar el estado de la tarjeta.</p>
+                          <div class="d-flex align-items-center justify-content-between mt-7 mb-3">
+                            <div class="d-flex align-items-center gap-3">
+                              <div class="text-bg-light rounded-1 p-6 d-flex align-items-center justify-content-center">
+                                <i class="ti text-dark d-block fs-7" width="22" height="22"></i>
+                              </div>
+                          <div>
+                                <p class="mb-0">Monto asignado</p>
+                                <h5 class="fs-4 fw-semibold">$ <?php echo number_format($balance); ?></h5>
+                          </div>
+                        </div>
+                            <a class="text-dark fs-6 d-flex align-items-center justify-content-center bg-transparent p-2 fs-4 rounded-circle" href="javascript:void(0)" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Add">
+                              <!-- <i class="ti ti-circle-plus"></i> -->
+                            </a>
+                      </div>
+                          <div class="d-flex align-items-center gap-3">
+                            <form action="servicios/bloquear_tarjeta.php" method="POST" class="d-flex align-items-center gap-3">
+                                <input type="hidden" name="card_id" value="<?php echo htmlspecialchars($carid); ?>">
+                                <input type="hidden" name="iduser" value="<?php echo htmlspecialchars($iduser); ?>">
+                                <input type="hidden" name="action" value="<?php echo ($status === 'ACTIVE') ? 'desactivar' : 'activar'; ?>">
+                                <div class="form-check form-switch">
+                                  <input class="form-check-input" type="checkbox" role="switch" id="cardStatusSwitch" onchange="this.form.submit()" <?php echo ($status === 'ACTIVE') ? 'checked' : ''; ?>>
+                                  <label class="form-check-label" for="cardStatusSwitch"><?php echo ($status === 'ACTIVE') ? 'Activa' : 'Inactiva'; ?></label>
+                    </div>
+                            </form>
+                            <form action="servicios/bloquear_tarjeta.php" method="POST">
+                                <input type="hidden" name="card_id" value="<?php echo htmlspecialchars($carid); ?>">
+                                <input type="hidden" name="iduser" value="<?php echo htmlspecialchars($iduser); ?>">
+                                <button type="submit" name="action" value="bloquear" class="btn btn-warning">Bloquear Tarjeta</button>
+                            </form>
+                  </div>
+                </div>
+                </div>
+                    </div>
+                    <div class="col-lg-9">
+                        <form method="post" action="servicios/procesarmonto.php">
+                      <div class="card border shadow-none">
+                        <div class="card-body p-4">
+                            <h4 class="card-title">Carga de saldo</h4>
+                            <p class="card-subtitle mb-4">
+                              Introduce el saldo a la tarjeta o retiralo.
+                            </p>
+                           
+                          <div>
+                                <div class="d-flex align-items-center justify-content-between mt-7 mb-3">
+                                    <div class="d-flex align-items-center gap-3">
+                                      <div class="text-bg-light rounded-1 p-6 d-flex align-items-center justify-content-center">
+                                        <i class="ti text-dark d-block fs-7" width="22" height="22"></i>
+                                      </div>
+                                      <div>
+                                        <p class="mb-0">Monto</p>
+                                        <input type="text" class="form-control" name="monto" placeholder="$" placeholder="$0.0" required="">
+                                        <input type="hidden" class="form-control" name="usr" value="<?php echo $id;?>">
+                                        <input type="hidden" class="form-control" name="acc" value="<?php echo $acc;?>">
+                                      </div>
+                                    </div>
+                                    <a class="text-dark fs-6 d-flex align-items-center justify-content-center bg-transparent p-2 fs-4 rounded-circle" href="javascript:void(0)" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Add">
+                                      <!-- <i class="ti ti-circle-plus"></i> -->
+                                    </a>
+                                  </div>
+                                  <div class="d-flex align-items-center gap-3">
+                                    <button type="submit" class="btn btn-primary" name="action" value="asignar">Asignar monto</button>
+                                    <button type="submit" class="btn btn-danger" name="action" value="retirar">Retirar monto</button>
+                                  </div>
+                              
+                              
+                            </div>
+                          </div>
+                        </div>
+                        </form>
+                      </div>
                     <div class="col-lg-9">
                       <div class="card border shadow-none">
                         <div class="card-body p-4">
                           <h4 class="card-title">Tarjetas asignadas</h4>
-                          <p class="card-subtitle mb-4">Aquí puedes ver las tarjetas asignadas al usuario.</p>
-                          <div>
+                          <p class="card-subtitle"><?php echo $start_date; ?></p>
+                         
                           <?php echo $tarjetascliente; ?>
                           </div>
                         </div>
+                      </div>
+                    <div class="col-12">
+                      <div class="d-flex align-items-center justify-content-end gap-6">
+                       
+                    </div>
+                  </div>
+                </div>
+              </div>
+                <div class="tab-pane fade" id="pills-security" role="tabpanel" aria-labelledby="pills-security-tab" tabindex="0">
+                  <div class="row">
+                    <div class="col-lg-8">
+                      <div class="card border shadow-none">
+                        <div class="card-body p-4">
+                          <h4 class="card-title mb-3">Two-factor Authentication</h4>
+                          <div class="d-flex align-items-center justify-content-between pb-7">
+                            <p class="card-subtitle mb-0">Lorem ipsum, dolor sit amet consectetur adipisicing elit. Corporis sapiente
+                              sunt earum officiis laboriosam ut.</p>
+                            <button class="btn btn-primary">Enable</button>
+                          </div>
+                          <div class="d-flex align-items-center justify-content-between py-3 border-top">
+                            <div>
+                              <h5 class="fs-4 fw-semibold mb-0">Authentication App</h5>
+                              <p class="mb-0">Google auth app</p>
+                            </div>
+                            <button class="btn bg-primary-subtle text-primary">Setup</button>
+                          </div>
+                          <div class="d-flex align-items-center justify-content-between py-3 border-top">
+                            <div>
+                              <h5 class="fs-4 fw-semibold mb-0">Another e-mail</h5>
+                              <p class="mb-0">E-mail to send verification link</p>
+                            </div>
+                            <button class="btn bg-primary-subtle text-primary">Setup</button>
+                          </div>
+                          <div class="d-flex align-items-center justify-content-between py-3 border-top">
+                            <div>
+                              <h5 class="fs-4 fw-semibold mb-0">SMS Recovery</h5>
+                              <p class="mb-0">Your phone number or something</p>
+                            </div>
+                            <button class="btn bg-primary-subtle text-primary">Setup</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="col-lg-4">
+                      <div class="card">
+                        <div class="card-body p-4">
+                          <div class="text-bg-light rounded-1 p-6 d-inline-flex align-items-center justify-content-center mb-3">
+                            <i class="ti ti-device-laptop text-primary d-block fs-7" width="22" height="22"></i>
+                          </div>
+                          <h4 class="card-title mb-0">Devices</h4>
+                          <p class="mb-3">Lorem ipsum dolor sit amet consectetur adipisicing elit Rem.</p>
+                          <button class="btn btn-primary mb-4">Sign out from all devices</button>
+                          <div class="d-flex align-items-center justify-content-between py-3 border-bottom">
+                            <div class="d-flex align-items-center gap-3">
+                              <i class="ti ti-device-mobile text-dark d-block fs-7" width="26" height="26"></i>
+                              <div>
+                                <h5 class="fs-4 fw-semibold mb-0">iPhone 14</h5>
+                                <p class="mb-0">London UK, Oct 23 at 1:15 AM</p>
+                              </div>
+                            </div>
+                            <a class="text-dark fs-6 d-flex align-items-center justify-content-center bg-transparent p-2 fs-4 rounded-circle" href="javascript:void(0)">
+                              <i class="ti ti-dots-vertical"></i>
+                            </a>
+                          </div>
+                          <div class="d-flex align-items-center justify-content-between py-3">
+                            <div class="d-flex align-items-center gap-3">
+                              <i class="ti ti-device-laptop text-dark d-block fs-7" width="26" height="26"></i>
+                              <div>
+                                <h5 class="fs-4 fw-semibold mb-0">Macbook Air</h5>
+                                <p class="mb-0">Gujarat India, Oct 24 at 3:15 AM</p>
+                              </div>
+                            </div>
+                            <a class="text-dark fs-6 d-flex align-items-center justify-content-center bg-transparent p-2 fs-4 rounded-circle" href="javascript:void(0)">
+                              <i class="ti ti-dots-vertical"></i>
+                            </a>
+                          </div>
+                          <button class="btn bg-primary-subtle text-primary w-100 py-1">Need Help ?</button>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="col-12">
+                      <div class="d-flex align-items-center justify-content-end gap-6">
+                        <button class="btn btn-primary">Save</button>
+                        <button class="btn bg-danger-subtle text-danger">Cancel</button>
                       </div>
                     </div>
                   </div>
@@ -830,7 +842,7 @@ if ($isLocal) {
     <div class="dark-transparent sidebartoggler"></div>
   </div>
   <!-- Import Js Files -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/libs/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/libs/simplebar/dist/simplebar.min.js"></script>
   <!-- <script src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/js/theme/app.dark.init.js"></script> -->
   <script src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/js/theme/theme.js"></script>
@@ -839,104 +851,6 @@ if ($isLocal) {
 
   <!-- solar icons -->
   <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
-  <!-- Bootstrap JS para que funcionen las pestañas -->
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  <!-- Modal de confirmación de bloqueo/desbloqueo -->
-  <div class="modal fade" id="modalBloqueoTarjeta" tabindex="-1" aria-labelledby="modalBloqueoTarjetaLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title" id="modalBloqueoTarjetaLabel">Estado de la tarjeta</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-        </div>
-        <div class="modal-body" id="modalBloqueoTarjetaMsg">
-          <!-- Mensaje dinámico -->
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Aceptar</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <script>
-function mostrarModalBloqueo(msg) {
-  document.getElementById('modalBloqueoTarjetaMsg').innerText = msg;
-  var modal = new bootstrap.Modal(document.getElementById('modalBloqueoTarjeta'));
-  modal.show();
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-  const switchBloqueo = document.getElementById('switch-bloqueo-tarjeta');
-  if (switchBloqueo) {
-    switchBloqueo.addEventListener('change', function() {
-      const bloqueada = !this.checked;
-      // Detectar entorno local o producción
-      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      if (isLocal) {
-        // Simulación local
-        mostrarModalBloqueo(bloqueada ? 'Tarjeta bloqueada' : 'Tarjeta desbloqueada');
-      } else {
-        // Producción: llamada al microservicio Java
-        fetch('/card/api/v1/block/<?php echo isset($cardId) ? $cardId : 'ID_TARJETA'; ?>', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-        })
-        .then(res => res.json())
-        .then(data => {
-          if (data && !data.error) {
-            mostrarModalBloqueo(bloqueada ? 'Tarjeta bloqueada' : 'Tarjeta desbloqueada');
-          } else {
-            mostrarModalBloqueo('Error: ' + (data && data.error ? data.error : 'Error desconocido'));
-            this.checked = !bloqueada; // Revertir si falla
-          }
-        })
-        .catch(() => {
-          mostrarModalBloqueo('Error de red');
-          this.checked = !bloqueada;
-        });
-      }
-    });
-  }
-});
-</script>
-
-<!-- Modal de confirmación de eliminación -->
-<div class="modal fade" id="modalEliminarUsuario" tabindex="-1" aria-labelledby="modalEliminarUsuarioLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="modalEliminarUsuarioLabel">Confirmar eliminación</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-      </div>
-      <div class="modal-body">
-        ¿Estás seguro de que deseas eliminar este usuario? Esta acción no es reversible.
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-        <button type="button" class="btn btn-danger" id="confirmarEliminarBtn">Eliminar</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script>
-  document.addEventListener('DOMContentLoaded', function () {
-      // ... otro código ...
-
-      // Manejador del modal de eliminación de usuario
-      var modalEliminarUsuario = document.getElementById('modalEliminarUsuario');
-      if(modalEliminarUsuario) {
-          var confirmarEliminarBtn = modalEliminarUsuario.querySelector('#confirmarEliminarBtn');
-          var formEliminarUsuario = document.getElementById('formEliminarUsuario');
-          
-          confirmarEliminarBtn.addEventListener('click', function() {
-              if(formEliminarUsuario) {
-                  formEliminarUsuario.submit();
-              }
-          });
-      }
-  });
-</script>
 </body>
 
 

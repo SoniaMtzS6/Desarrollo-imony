@@ -1,56 +1,92 @@
-<?php include 'functions.php'; ?>
+<?php 
+session_start();
+require_once 'functions.php';
 
-
-<?php
-
-
-// Conexión a la base de datos
-
-
-
-
-
-$conn = getDbConnection();
-if ($conn->connect_error) {
-    die("Error de conexión a la base de datos: " . $conn->connect_error);
+// Validar que el usuario está en sesión.
+if (!isset($_SESSION["usuario"])) {
+    header("Location: index.php");
+    exit;
 }
 
-// Obtener ID del administrador desde la URL
-$idAdmin = $_GET['id'] ?? null;
+// --- Lógica de carga de datos ---
 $admin = null;
+$empresa_options = ''; // Renombrado para evitar confusión
+$idAdmin = $_GET['id'] ?? null;
 
-if ($idAdmin) {
-    // Código de producción
-    /*
+if (!$idAdmin) {
+    die("No se ha especificado un ID de administrador.");
+}
+
+// Determinar el entorno
+$is_production = (strpos($_SERVER['HTTP_HOST'], 'elasticbeanstalk.com') !== false);
+
+if ($is_production) {
+    // --- Código de PRODUCCIÓN (API) ---
+    // 1. Obtener detalles del administrador usando el endpoint de LISTA con el ID
+    $curl_admin = curl_init();
+    curl_setopt_array($curl_admin, array(
+        CURLOPT_URL => 'https://9kjot10cte.execute-api.us-east-2.amazonaws.com/dev/admin/list?id=' . urlencode($idAdmin),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CUSTOMREQUEST => 'GET',
+        CURLOPT_HTTPHEADER => array('Content-Type: application/json'),
+        CURLOPT_TIMEOUT => 30
+    ));
+    $response_admin = curl_exec($curl_admin);
+    curl_close($curl_admin);
+    if ($response_admin) {
+        $admin_data = json_decode($response_admin, true);
+        $admin = $admin_data['data'][0] ?? null; // El resultado es un array, tomamos el primer elemento
+    }
+
+    // 2. Obtener lista de empresas
+    $curl_empresas = curl_init();
+    curl_setopt_array($curl_empresas, array(
+        CURLOPT_URL => 'https://9kjot10cte.execute-api.us-east-2.amazonaws.com/dev/empresa/list', // Asumiendo este endpoint
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CUSTOMREQUEST => 'GET', // Asumiendo GET para listas
+        CURLOPT_HTTPHEADER => array('Content-Type: application/json'),
+        CURLOPT_TIMEOUT => 30
+    ));
+    $response_empresas = curl_exec($curl_empresas);
+    curl_close($curl_empresas);
+    if ($response_empresas) {
+        $empresas_data = json_decode($response_empresas, true);
+        if (isset($empresas_data['data'])) {
+            foreach ($empresas_data['data'] as $row) {
+                $selected = ($admin && $admin['idEmpresa'] == $row['ID_EMPRESA']) ? 'selected' : '';
+                $empresa_options .= '<option value="' . htmlspecialchars($row['ID_EMPRESA']) . '" ' . $selected . '>' . htmlspecialchars($row['NOMBRE_EMPRESA']) . '</option>';
+            }
+        }
+    }
+
+} else {
+    // --- Código LOCAL (Base de Datos Directa) ---
+    $conn = getDbConnection();
+    if ($conn->connect_error) {
+        die("Error de conexión a la base de datos: " . $conn->connect_error);
+    }
+    
+    // 1. Obtener detalles del administrador
     $stmt = $conn->prepare("SELECT * FROM administradores WHERE id = ?");
     $stmt->bind_param("i", $idAdmin);
     $stmt->execute();
     $result = $stmt->get_result();
     $admin = $result->fetch_assoc();
     $stmt->close();
-    */
 
-    // Código local
-    $stmt = $conn->prepare("SELECT * FROM administradores WHERE id = ?");
-    $stmt->bind_param("i", $idAdmin);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $admin = $result->fetch_assoc();
-    $stmt->close();
+    // 2. Obtener lista de empresas
+    $resultEmp = $conn->query("SELECT ID_EMPRESA, NOMBRE_EMPRESA FROM empresas");
+    while ($row = $resultEmp->fetch_assoc()) {
+        $selected = ($admin && ($admin['idEmpresa'] ?? '') == $row['ID_EMPRESA']) ? 'selected' : '';
+        $empresa_options .= '<option value="' . htmlspecialchars($row['ID_EMPRESA']) . '" ' . $selected . '>' . htmlspecialchars($row['NOMBRE_EMPRESA']) . '</option>';
+    }
+    $conn->close();
 }
 
-
-$empresa = '';
-$resultEmp = $conn->query("SELECT ID_EMPRESA, NOMBRE_EMPRESA FROM empresas");
-while ($row = $resultEmp->fetch_assoc()) {
-    $selected = ($admin && $admin['id_empresa'] == $row['ID_EMPRESA']) ? 'selected' : '';
-    $empresa .= '<option value="' . $row['ID_EMPRESA'] . '" ' . $selected . '>' . $row['NOMBRE_EMPRESA'] . '</option>';
+if (!$admin) {
+    die("No se encontró al administrador con el ID proporcionado.");
 }
-
-
-$conn->close();
 ?>
-
 
 <!DOCTYPE html>
 <html lang="en" dir="ltr" data-bs-theme="ligth" data-color-theme="Blue_Theme" data-layout="vertical">
@@ -68,7 +104,7 @@ $conn->close();
 
   <!-- Core Css -->
   <link rel="stylesheet" href="assets/css/style.css" />
-  <title>Interestellar Admin</title>
+  <title>Interestellar Admin - Editar Administrador</title>
 </head>
 
 <body class="link-sidebar">
@@ -78,9 +114,6 @@ $conn->close();
   </div>
   <div id="main-wrapper">
       <?php include 'header.php'; ?>
-
-      
-
       <div class="body-wrapper">
         <div class="container-fluid">
           <div class="mb-4">
@@ -132,8 +165,9 @@ $conn->close();
                         <div class="card-body p-4">
                           <h4 class="card-title">Detalles de la cuenta</h4>
                           <p class="card-subtitle mb-4">Para cambiar los detalles de la cuenta, edita y guarda los cambios.</p>
-                          <form method="POST" action="servicios/editaradmin.php">
-                            <input type="hidden" name="idadmin" value="<?php echo htmlspecialchars($admin['id'] ?? ''); ?>">
+                          <form id="formGuardar" method="POST" action="servicios/editaradmin.php">
+                            <input type="hidden" name="accion" value="guardar">
+                            <input type="hidden" name="idadmin" value="<?php echo htmlspecialchars($admin['id']); ?>">
                             <div class="row">
                                 <div class="col-lg-6">
                                 <div class="mb-3">
@@ -142,9 +176,8 @@ $conn->close();
                                 </div>
                                 <div class="mb-3">
                                     <label class="form-label">Empresa</label>
-                                    <select class="form-select" name="id_empresa">
-                                    <option disabled>Selecciona empresa</option>
-                                    <?php echo $empresa; ?>
+                                    <select class="form-select" name="idEmpresa">
+                                    <?php echo $empresa_options; ?>
                                     </select>
                                 </div>
                                 <div class="mb-3">
@@ -177,28 +210,26 @@ $conn->close();
                                 </div>
                                 <div class="col-12">
                                 <div class="d-flex align-items-center justify-content-end mt-4 gap-6">
-                                    <button class="btn btn-primary">Guardar</button>
+                                    <button type="submit" class="btn btn-primary">Guardar</button>
                                     <a href="administradores.php" class="btn bg-danger-subtle text-danger">Cancelar</a>
                                 </div>
                                 </div>
                                 <!-- Botones de Bloqueo/Desbloqueo y Eliminación -->
                                 <div class="col-12 mt-3">
-                                  <form method="POST" action="servicios/editaradmin.php" style="display:inline;">
-                                    <input type="hidden" name="accion" value="bloquear">
-                                    <input type="hidden" name="idadmin" value="<?php echo htmlspecialchars($admin['id'] ?? ''); ?>">
-                                    <?php if (isset($admin['activo']) && $admin['activo'] == 1): ?>
-                                      <button type="submit" class="btn btn-warning">Bloquear Administrador</button>
-                                    <?php else: ?>
-                                      <button type="submit" class="btn btn-success">Desbloquear Administrador</button>
-                                    <?php endif; ?>
-                                  </form>
-                                  <!-- Botón de Eliminar que abre el modal -->
-                                  <form id="formEliminarAdmin" method="POST" action="servicios/editaradmin.php" style="display:inline; margin-left:10px;">
-                                    <input type="hidden" name="accion" value="eliminar">
-                                    <input type="hidden" name="idadmin" value="<?php echo htmlspecialchars($admin['id'] ?? ''); ?>">
+                                  <div class="d-flex gap-2">
+                                    <form method="POST" action="servicios/editaradmin.php">
+                                      <input type="hidden" name="idadmin" value="<?php echo htmlspecialchars($admin['id']); ?>">
+                                      <?php if (isset($admin['activo']) && $admin['activo'] == 1): ?>
+                                        <input type="hidden" name="accion" value="bloquear">
+                                        <button type="submit" class="btn btn-warning">Bloquear Administrador</button>
+                                      <?php else: ?>
+                                        <input type="hidden" name="accion" value="desbloquear">
+                                        <button type="submit" class="btn btn-success">Desbloquear Administrador</button>
+                                      <?php endif; ?>
+                                    </form>
+                                    <!-- Botón de Eliminar que abre el modal -->
                                     <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#modalEliminarAdmin">Eliminar Administrador</button>
-                                  </form>
-                                </div>
+                                  </div>
                             </div>
                             </form>
                         </div>
@@ -405,7 +436,5 @@ $conn->close();
   };
   </script>
 </body>
-
-
 <!-- Mirrored from bootstrapdemos.adminmart.com/seodash/dist/dark/page-account-settings.html by HTTrack Website Copier/3.x [XR&CO'2014], Mon, 23 Sep 2024 04:46:21 GMT -->
 </html>
