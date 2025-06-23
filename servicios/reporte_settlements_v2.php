@@ -37,9 +37,7 @@ while ($row = $result->fetch_assoc()) {
 }
 $stmt->close();
 
-if (count($accounts) === 0) {
-    die("No hay cuentas relacionadas con esta empresa.");
-}
+$noAccounts = count($accounts) === 0;
 
 // Filtros de fecha
 $fecha_inicio = isset($_GET['fecha_inicio']) ? $_GET['fecha_inicio'] : date('Y-m-01');
@@ -60,7 +58,10 @@ $stmt->close();
 $empresaNombre = $empresa ? $empresa['NOMBRE_EMPRESA'] : 'Empresa';
 
 // Obtener datos usando la nueva API
-$apiResponse = getSettlementsReport($fecha_inicio, $fecha_fin, implode(',', $accounts), $page, $size);
+$apiResponse = [];
+if (!$noAccounts) {
+    $apiResponse = getSettlementsReport($fecha_inicio, $fecha_fin, implode(',', $accounts), $page, $size);
+}
 $data = convertSettlementsResponse($apiResponse);
 
 // Extraer datos y establecer valores por defecto para evitar warnings
@@ -167,6 +168,12 @@ $envInfo = getSettlementsEnvironmentInfo();
                 </div>
                 <?php endif; ?>
 
+                <?php if ($noAccounts): ?>
+                <div class="alert alert-warning" role="alert">
+                    <i class="bi bi-info-circle"></i>
+                    <strong>Aviso:</strong> No hay cuentas asociadas a esta empresa, por lo que no se puede generar el reporte.
+                </div>
+                <?php else: ?>
                 <div class="row mb-4">
                     <div class="col-md-3">
                         <div class="card summary-card">
@@ -376,6 +383,7 @@ $envInfo = getSettlementsEnvironmentInfo();
                     </div>
                 </div>
                 <?php endif; ?>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -436,4 +444,4 @@ $envInfo = getSettlementsEnvironmentInfo();
     </script>
     <?php endif; ?>
 </body>
-</html> 
+</html>

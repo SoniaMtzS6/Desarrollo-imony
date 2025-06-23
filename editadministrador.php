@@ -1,4 +1,4 @@
-<?php 
+<?php
 session_start();
 require_once 'functions.php';
 
@@ -12,6 +12,7 @@ if (!isset($_SESSION["usuario"])) {
 $admin = null;
 $empresa_options = ''; // Renombrado para evitar confusión
 $idAdmin = $_GET['id'] ?? null;
+$id_empresa_session = $_SESSION['usuario']['id_empresa'] ?? null; // Estandarizar
 
 if (!$idAdmin) {
     die("No se ha especificado un ID de administrador.");
@@ -61,11 +62,11 @@ if ($is_production) {
 
 } else {
     // --- Código LOCAL (Base de Datos Directa) ---
-    $conn = getDbConnection();
-    if ($conn->connect_error) {
-        die("Error de conexión a la base de datos: " . $conn->connect_error);
-    }
-    
+$conn = getDbConnection();
+if ($conn->connect_error) {
+    die("Error de conexión a la base de datos: " . $conn->connect_error);
+}
+
     // 1. Obtener detalles del administrador
     $stmt = $conn->prepare("SELECT * FROM administradores WHERE id = ?");
     $stmt->bind_param("i", $idAdmin);
@@ -75,11 +76,11 @@ if ($is_production) {
     $stmt->close();
 
     // 2. Obtener lista de empresas
-    $resultEmp = $conn->query("SELECT ID_EMPRESA, NOMBRE_EMPRESA FROM empresas");
-    while ($row = $resultEmp->fetch_assoc()) {
+$resultEmp = $conn->query("SELECT ID_EMPRESA, NOMBRE_EMPRESA FROM empresas");
+while ($row = $resultEmp->fetch_assoc()) {
         $selected = ($admin && ($admin['idEmpresa'] ?? '') == $row['ID_EMPRESA']) ? 'selected' : '';
         $empresa_options .= '<option value="' . htmlspecialchars($row['ID_EMPRESA']) . '" ' . $selected . '>' . htmlspecialchars($row['NOMBRE_EMPRESA']) . '</option>';
-    }
+}
     $conn->close();
 }
 
@@ -165,9 +166,9 @@ if (!$admin) {
                         <div class="card-body p-4">
                           <h4 class="card-title">Detalles de la cuenta</h4>
                           <p class="card-subtitle mb-4">Para cambiar los detalles de la cuenta, edita y guarda los cambios.</p>
-                          <form id="formGuardar" method="POST" action="servicios/editaradmin.php">
-                            <input type="hidden" name="accion" value="guardar">
+                          <form id="editAdminForm" method="POST" action="servicios/editaradmin.php">
                             <input type="hidden" name="idadmin" value="<?php echo htmlspecialchars($admin['id']); ?>">
+                            <input type="hidden" name="action" id="formAction" value="">
                             <div class="row">
                                 <div class="col-lg-6">
                                 <div class="mb-3">
@@ -208,28 +209,23 @@ if (!$admin) {
                                     <input type="text" class="form-control" name="direccion" value="<?php echo htmlspecialchars($admin['direccion'] ?? ''); ?>">
                                 </div>
                                 </div>
+                            </div>
+                            
                                 <div class="col-12">
-                                <div class="d-flex align-items-center justify-content-end mt-4 gap-6">
-                                    <button type="submit" class="btn btn-primary">Guardar</button>
-                                    <a href="administradores.php" class="btn bg-danger-subtle text-danger">Cancelar</a>
+                                <div class="d-flex justify-content-between align-items-center mt-4">
+                                    <div class="d-flex gap-3">
+                                        <?php if (isset($admin['status']) && $admin['status'] === 'BLOCKED'): ?>
+                                            <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#confirmDesbloquearModal">Desbloquear</button>
+                                        <?php else: ?>
+                                            <button type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#confirmBloquearModal">Bloquear</button>
+                                        <?php endif; ?>
+                                        <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#confirmEliminarModal">Eliminar</button>
+                                    </div>
+                                    <div>
+                                        <button type="button" class="btn btn-dark" id="guardarBtn">Guardar</button>
+                                        <a href="administradores.php" class="btn btn-light-danger ms-2">Cancelar</a>
                                 </div>
                                 </div>
-                                <!-- Botones de Bloqueo/Desbloqueo y Eliminación -->
-                                <div class="col-12 mt-3">
-                                  <div class="d-flex gap-2">
-                                    <form method="POST" action="servicios/editaradmin.php">
-                                      <input type="hidden" name="idadmin" value="<?php echo htmlspecialchars($admin['id']); ?>">
-                                      <?php if (isset($admin['activo']) && $admin['activo'] == 1): ?>
-                                        <input type="hidden" name="accion" value="bloquear">
-                                        <button type="submit" class="btn btn-warning">Bloquear Administrador</button>
-                                      <?php else: ?>
-                                        <input type="hidden" name="accion" value="desbloquear">
-                                        <button type="submit" class="btn btn-success">Desbloquear Administrador</button>
-                                      <?php endif; ?>
-                                    </form>
-                                    <!-- Botón de Eliminar que abre el modal -->
-                                    <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#modalEliminarAdmin">Eliminar Administrador</button>
-                                  </div>
                             </div>
                             </form>
                         </div>
@@ -411,29 +407,90 @@ if (!$admin) {
   <!-- solar icons -->
   <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
 
-  <!-- Modal de confirmación de eliminación -->
-  <div class="modal fade" id="modalEliminarAdmin" tabindex="-1" aria-labelledby="modalEliminarAdminLabel" aria-hidden="true">
+  <!-- Modals -->
+  <!-- Bloquear Modal -->
+  <div class="modal fade" id="confirmBloquearModal" tabindex="-1" aria-labelledby="confirmBloquearModalLabel" aria-hidden="true">
     <div class="modal-dialog">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title" id="modalEliminarAdminLabel">Confirmar eliminación</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          <h5 class="modal-title" id="confirmBloquearModalLabel">Confirmar Bloqueo</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
-          ¿Estás seguro de que deseas eliminar este administrador? Esta acción no es reversible.
+          ¿Estás seguro de que quieres bloquear a este administrador?
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="button" class="btn btn-danger" id="confirmarEliminarBtn">Eliminar</button>
+          <button type="button" class="btn btn-warning" id="confirmBloquearBtn">Sí, bloquear</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Desbloquear Modal -->
+  <div class="modal fade" id="confirmDesbloquearModal" tabindex="-1" aria-labelledby="confirmDesbloquearModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="confirmDesbloquearModalLabel">Confirmar Desbloqueo</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          ¿Estás seguro de que quieres desbloquear a este administrador?
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-success" id="confirmDesbloquearBtn">Sí, desbloquear</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Eliminar Modal -->
+  <div class="modal fade" id="confirmEliminarModal" tabindex="-1" aria-labelledby="confirmEliminarModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="confirmEliminarModalLabel">Confirmar Eliminación</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p>¿Estás seguro de que quieres eliminar a este administrador?</p>
+          <p class="text-info">El estado del administrador se cambiará a "Eliminado" y no será visible en la lista principal.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-danger" id="confirmEliminarBtn">Sí, eliminar</button>
         </div>
       </div>
     </div>
   </div>
 
   <script>
-  document.getElementById('confirmarEliminarBtn').onclick = function() {
-    document.getElementById('formEliminarAdmin').submit();
-  };
+    document.addEventListener('DOMContentLoaded', function () {
+      const form = document.getElementById('editAdminForm');
+      const actionInput = document.getElementById('formAction');
+
+      document.getElementById('guardarBtn').addEventListener('click', function () {
+          actionInput.value = 'guardar';
+          form.submit();
+      });
+
+      document.getElementById('confirmBloquearBtn').addEventListener('click', function () {
+          actionInput.value = 'bloquear';
+          form.submit();
+      });
+
+      document.getElementById('confirmDesbloquearBtn').addEventListener('click', function () {
+          actionInput.value = 'desbloquear';
+          form.submit();
+      });
+
+      document.getElementById('confirmEliminarBtn').addEventListener('click', function () {
+          actionInput.value = 'eliminar';
+          form.submit();
+      });
+    });
   </script>
 </body>
 <!-- Mirrored from bootstrapdemos.adminmart.com/seodash/dist/dark/page-account-settings.html by HTTrack Website Copier/3.x [XR&CO'2014], Mon, 23 Sep 2024 04:46:21 GMT -->

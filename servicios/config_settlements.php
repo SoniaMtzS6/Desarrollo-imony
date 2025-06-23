@@ -25,10 +25,11 @@ if (file_exists(__DIR__ . '/.env')) {
 }
 
 // Configuración de entornos
-define('SETTLEMENTS_ENV', getenv('SETTLEMENTS_ENV') ?: 'production'); // 'local' o 'production'
+define('SETTLEMENTS_ENV', 'production'); // Forzamos a 'production' para llamar a AWS
 
 // URLs de los servicios
-define('SETTLEMENTS_LAMBDA_URL', getenv('SETTLEMENTS_LAMBDA_URL') ?: 'https://37kylcuth7.execute-api.us-east-2.amazonaws.com/DEV');
+// La URL de la nueva API Gateway que hemos depurado
+define('SETTLEMENTS_LAMBDA_URL', getenv('SETTLEMENTS_LAMBDA_URL') ?: 'https://at99mc89s6.execute-api.us-east-2.amazonaws.com/prod');
 define('SETTLEMENTS_LOCAL_URL', getenv('SETTLEMENTS_LOCAL_URL') ?: 'http://localhost:3003');
 
 // Configuración de timeout

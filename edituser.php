@@ -398,8 +398,9 @@ if($_SESSION["usuario"]["perfil"]==="Superadministrador"){
                         <div class="card-body p-4">
                           <h4 class="card-title">Detalles personales</h4>
                           <p class="card-subtitle mb-4">Para cambiar los detalles de la cuenta, edita y guarda los cambios.</p>
-                          <form action="servicios/editaruser.php" method="post">
+                          <form id="editUserForm" action="servicios/editaruser.php" method="post">
                             <input type="hidden" name="iduser" value="<?php echo htmlspecialchars($iduser); ?>">
+                            <input type="hidden" name="action" id="formAction" value="">
 
                             <div class="row">
                               <div class="col-lg-6">
@@ -444,20 +445,28 @@ if($_SESSION["usuario"]["perfil"]==="Superadministrador"){
                             </div> <!-- cierre correcto de row -->
 
                             <div class="col-12">
-                              <div class="d-flex justify-content-end gap-3 mt-4">
-                                    <button type="submit" name="action" value="guardar" class="btn btn-primary">Guardar</button>
-                                    <button type="submit" name="action" value="bloquear" class="btn btn-warning">Bloquear</button>
-                                    <button type="submit" name="action" value="eliminar" class="btn btn-danger" onclick="return confirm('¿Estás seguro de que quieres eliminar este usuario?');">Eliminar</button>
-                                <a href="../usuarios.php" class="btn btn-secondary">Cancelar</a>
+                              <div class="d-flex justify-content-between align-items-center mt-4">
+                                  <div class="d-flex gap-3">
+                                      <?php if (isset($user['status']) && $user['status'] === 'BLOCKED'): ?>
+                                          <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#confirmDesbloquearModal">Desbloquear Usuario</button>
+                                      <?php else: ?>
+                                          <button type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#confirmBloquearModal">Bloquear Usuario</button>
+                                      <?php endif; ?>
+                                      <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#confirmEliminarModal">Eliminar Usuario</button>
+                                </div>
+                                  <div>
+                                      <button type="submit" name="action" value="guardar" class="btn btn-dark">Guardar</button>
+                                      <a href="usuarios.php" class="btn btn-light-danger ms-2">Cancelar</a>
                                 </div>
                             </div>
-                          </form>
+                        </div>
+                                </form>
 
+                            </div>
                         </div>
                       </div>
                     </div>
                   </div>
-                </div>
                 <div class="tab-pane fade" id="pills-notifications" role="tabpanel" aria-labelledby="pills-notifications-tab" tabindex="0">
                   <div class="row justify-content-center">
                     <div class="col-lg-9">
@@ -472,7 +481,7 @@ if($_SESSION["usuario"]["perfil"]==="Superadministrador"){
                             
                             <?php echo $compra; ?>
                             
-                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -848,6 +857,96 @@ if($_SESSION["usuario"]["perfil"]==="Superadministrador"){
   <script src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/js/theme/theme.js"></script>
   <!-- <script src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/js/theme/app.min.js"></script> -->
   <script src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/js/theme/sidebarmenu.js"></script>
+
+  <!-- Modals -->
+  <!-- Bloquear Modal -->
+  <div class="modal fade" id="confirmBloquearModal" tabindex="-1" aria-labelledby="confirmBloquearModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="confirmBloquearModalLabel">Confirmar Bloqueo</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          ¿Estás seguro de que quieres bloquear a este usuario?
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-warning" id="confirmBloquearBtn">Sí, bloquear</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Desbloquear Modal -->
+  <div class="modal fade" id="confirmDesbloquearModal" tabindex="-1" aria-labelledby="confirmDesbloquearModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="confirmDesbloquearModalLabel">Confirmar Desbloqueo</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          ¿Estás seguro de que quieres desbloquear a este usuario?
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-success" id="confirmDesbloquearBtn">Sí, desbloquear</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Eliminar Modal -->
+  <div class="modal fade" id="confirmEliminarModal" tabindex="-1" aria-labelledby="confirmEliminarModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+          <h5 class="modal-title" id="confirmEliminarModalLabel">Confirmar Eliminación</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+          <p>¿Estás seguro de que quieres eliminar a este usuario?</p>
+          <!-- <p class="text-info">El estado del usuario se cambiará a "Eliminado" y podrá ser reactivado en el futuro.</p> -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-danger" id="confirmEliminarBtn">Sí, eliminar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+      const form = document.getElementById('editUserForm');
+      const actionInput = document.getElementById('formAction');
+
+      const confirmBloquearBtn = document.getElementById('confirmBloquearBtn');
+      if (confirmBloquearBtn) {
+        confirmBloquearBtn.addEventListener('click', function () {
+          actionInput.value = 'bloquear';
+          form.submit();
+        });
+      }
+
+      const confirmDesbloquearBtn = document.getElementById('confirmDesbloquearBtn');
+      if (confirmDesbloquearBtn) {
+        confirmDesbloquearBtn.addEventListener('click', function () {
+          actionInput.value = 'desbloquear';
+          form.submit();
+        });
+      }
+
+      const confirmEliminarBtn = document.getElementById('confirmEliminarBtn');
+      if (confirmEliminarBtn) {
+        confirmEliminarBtn.addEventListener('click', function () {
+          actionInput.value = 'eliminar';
+          form.submit();
+          });
+      }
+  });
+</script>
 
   <!-- solar icons -->
   <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>

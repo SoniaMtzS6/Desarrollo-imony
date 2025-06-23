@@ -31,11 +31,19 @@ if ($is_production) {
     // --- CÓDIGO DE PRODUCCIÓN (API) ---
 $curl = curl_init();
 
-if($_SESSION["usuario"]["perfil"] === "Superadministrador") {
-    $url = "https://37kylcuth7.execute-api.us-east-2.amazonaws.com/DEV/user/api/v1?sort=-idL&size=$size&page=$page";
-} else {
-    $url = "https://37kylcuth7.execute-api.us-east-2.amazonaws.com/DEV/user/api/v1?sort=-idL&size=$size&page=$page&filter[idEmpresa]=".$_SESSION["usuario"]["idEmpresa"];
+    $base_url = "https://37kylcuth7.execute-api.us-east-2.amazonaws.com/DEV/user/api/v1";
+    $params = [
+        'sort' => '-idL',
+        'size' => $size,
+        'page' => $page,
+        'filter[status][ne]' => 'DELETED'
+    ];
+
+    if ($_SESSION["usuario"]["perfil"] !== "Superadministrador") {
+        $params['filter[idEmpresa]'] = $_SESSION["usuario"]["idEmpresa"];
 }
+
+    $url = $base_url . '?' . http_build_query($params);
 
 curl_setopt_array($curl, array(
     CURLOPT_URL => $url,
@@ -54,14 +62,14 @@ curl_close($curl);
         $data = json_decode($response, true);
         if (isset($data['data']['content']) && is_array($data['data']['content'])) {
             $empresas = [];
-            $conn = getDbConnection();
+    $conn = getDbConnection();
             if (!$conn->connect_error) {
                 $query = "SELECT ID_EMPRESA, NOMBRE_EMPRESA FROM empresas";
-                $result = $conn->query($query);
+    $result = $conn->query($query);
                 if ($result) {
-                    while ($row = $result->fetch_assoc()) {
+    while ($row = $result->fetch_assoc()) {
                         $empresas[$row['ID_EMPRESA']] = $row['NOMBRE_EMPRESA'];
-                    }
+    }
                 }
                 $conn->close();
             }
@@ -122,11 +130,17 @@ curl_close($curl);
         $idEmpresa_session = $_SESSION["usuario"]["id_empresa"] ?? 0;
         $perfil_session = $_SESSION["usuario"]["perfil"] ?? '';
 
+        // --- Construcción de la consulta ---
+        $where_clauses = ["u.status != 'DELETED'"];
+        if (isset($_SESSION["usuario"]["id_empresa"]) && $_SESSION["usuario"]["perfil"] !== 'Superadministrador') {
+            $idEmpresa_session = intval($_SESSION["usuario"]["id_empresa"]);
+            $where_clauses[] = "u.id_empresa = {$idEmpresa_session}";
+    }
+
+        $where_sql = implode(' AND ', $where_clauses);
+
         // Contar total de registros para paginación
-        $count_query = "SELECT COUNT(*) as total FROM `user`";
-        if ($perfil_session !== 'Superadministrador') {
-            $count_query .= " WHERE id_empresa = " . intval($idEmpresa_session);
-        }
+        $count_query = "SELECT COUNT(*) as total FROM `user` u WHERE {$where_sql}";
         $count_result = $conn->query($count_query);
         $total_rows = $count_result->fetch_assoc()['total'];
         $totalPages = ceil($total_rows / $size);
@@ -134,12 +148,11 @@ curl_close($curl);
         // Consulta principal con paginación
         $query = "SELECT u.*, e.NOMBRE_EMPRESA 
                   FROM `user` u 
-                  LEFT JOIN `empresas` e ON u.id_empresa = e.ID_EMPRESA";
-        if ($perfil_session !== 'Superadministrador') {
-            $query .= " WHERE u.id_empresa = " . intval($idEmpresa_session);
-        }
-        $query .= " ORDER BY u.id_ DESC LIMIT $size OFFSET $offset";
-
+                  LEFT JOIN `empresas` e ON u.id_empresa = e.ID_EMPRESA
+                  WHERE {$where_sql}
+                  ORDER BY u.id_ DESC 
+                  LIMIT {$size} OFFSET {$offset}";
+        
         $result = $conn->query($query);
 
         if ($result && $result->num_rows > 0) {

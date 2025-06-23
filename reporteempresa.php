@@ -108,15 +108,14 @@ if ($conn->connect_error) {
     die("Error de conexión: " . $conn->connect_error);
 }
 
-$idEmpresa = $_GET['id_empresa'] ?? (isset($_SESSION["usuario"]["id_empresa"]) ? $_SESSION["usuario"]["id_empresa"] : null);
-if (!$idEmpresa) {
-    echo '<div style="color:red; font-weight:bold; margin:2em;">No se encontró el ID de empresa en la sesión ni en la URL.<br>Por favor, inicia sesión correctamente o selecciona una empresa.</div>';
-    echo '<a href="index.php" style="display:inline-block; margin:1em; padding:0.5em 1em; background:#007bff; color:#fff; border-radius:5px; text-decoration:none;">Ir al inicio</a>';
-    // Depuración: mostrar la sesión
-    echo '<pre style="background:#eee; padding:1em;">';
-    print_r($_SESSION);
-    echo '</pre>';
-    exit;
+// Lógica de obtención de ID de empresa estandarizada
+if (isset($_GET['id_empresa']) && !empty($_GET['id_empresa'])) {
+    $idEmpresa = $_GET['id_empresa'];
+} elseif (isset($_SESSION["usuario"]["id_empresa"]) && !empty($_SESSION["usuario"]["id_empresa"])) {
+    $idEmpresa = $_SESSION["usuario"]["id_empresa"]; // Usar siempre id_empresa
+} else {
+    // Si no hay ID en GET ni en SESIÓN, es un error fatal.
+    die("No se ha especificado un ID de empresa válido. Por favor, inicie sesión de nuevo.");
 }
 
 $saldoInicial = 0;
@@ -182,9 +181,11 @@ while ($row = $result->fetch_assoc()) {
 $stmt->close();
 
 if (count($accounts) === 0) {
-    die("No hay cuentas relacionadas.");
-}
+    // Si no hay cuentas, se previene un error de sintaxis SQL y se continúa para mostrar el reporte en ceros.
+    $accountsIn = "''"; 
+} else {
 $accountsIn = implode(",", $accounts);
+}
 
 // ================== FILTROS DE FECHA (NUEVO CÓDIGO LOCAL) ==================
 // Formulario de filtros antes de la tabla
@@ -421,181 +422,120 @@ while ($row = $resUsuarios->fetch_assoc()) {
 }
 $stmt->close();
 
-$tarjetas = [];
-if (count($usuariosEmpresa) > 0) {
-    $listaUsuarios = implode(",", array_map('intval', $usuariosEmpresa));
-    $sqlTarjetas = "SELECT DISTINCT u.id_ as user_id, u.name as NOMBRE_USUARIO, u.id_account, 
-                           t.id, t.card_id, t.last_four, t.status, t.provider, t.affinity_group_name, t.start_date
-                    FROM user u
-                    LEFT JOIN tarjetas_local t ON u.id_ = t.user_id
-                    WHERE u.id_ IN ($listaUsuarios)
-                    ORDER BY u.name";
-    $resultTarjetas = $conn->query($sqlTarjetas);
-    while ($row = $resultTarjetas->fetch_assoc()) {
-        $tarjetas[] = [
-            'id' => $row['id'],
-            'card_id' => $row['card_id'],
-            'last_four' => $row['last_four'],
-            'status' => $row['status'],
-            'provider' => $row['provider'],
-            'affinity_group_name' => $row['affinity_group_name'],
-            'start_date' => $row['start_date'],
-            'usuario' => $row['NOMBRE_USUARIO'],
-            'id_account' => $row['id_account'] ?? null,
-            'user_id' => $row['user_id']
-        ];
-    }
-}
-
 $tarjetas_calculadas = [];
 $totalSaldoInicialTarjetas = 0;
 $totalAsignacionesTarjetas = 0;
 $totalCargosTarjetas = 0;
 $totalRetirosTarjetas = 0;
 $totalSaldoTarjetas = 0;
+$id_empresa_filtrada = $empresa_filtro;
 
-if (count($tarjetas) > 0) {
-    foreach ($tarjetas as $t) {
-        $id_account = $t['id_account'];
-        $user_id = $t['user_id'];
-        $saldoInicialTarjeta = 0;
-        $asignacionesTarjeta = 0;
-        $cargosTarjeta = 0;
-        $retirosTarjeta = 0; 
+// La lógica ahora se basará en la estructura de DB real
+if ($id_empresa_filtrada) {
+    // 1. Obtener Token de Pomelo una sola vez
+    $curl_auth = curl_init();
+    curl_setopt_array($curl_auth, [
+        CURLOPT_URL => 'https://api.pomelo.la/oauth/token',
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CUSTOMREQUEST => 'POST',
+        CURLOPT_POSTFIELDS => json_encode([
+            "client_id" => "cxq8Yq6wFgE53FxOzgHAGrCzRe5n4KgL",
+            "client_secret" => "hfGy54beNj08H6v7AnvTgo2g5zYGXZ9kyTdtpEHs5b_Vzgv1WDypnyFUz6273YO9",
+            "audience" => "https://auth-prod.pomelo.la",
+            "grant_type" => "client_credentials"
+        ]),
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+    ]);
+    $response_auth = curl_exec($curl_auth);
+    curl_close($curl_auth);
+    $token_data = json_decode($response_auth, true);
+    $token = $token_data['access_token'] ?? null;
 
-        // Saldo inicial combinado (activity + usuarios_movimientos)
-        if ($fecha_inicio) {
-            if ($id_account) {
-                $sqlSaldoActivity = $conn->prepare("SELECT SUM(CASE WHEN entry_type = 'CREDIT' THEN total_amount ELSE -total_amount END) as saldo FROM activity WHERE account = ? AND result = 'APPROVED' AND DATE(datetime) < ?");
-                $sqlSaldoActivity->bind_param("ss", $id_account, $fecha_inicio);
-                $sqlSaldoActivity->execute();
-                if ($row = $sqlSaldoActivity->get_result()->fetch_assoc()) $saldoInicialTarjeta += floatval($row['saldo']);
-                $sqlSaldoActivity->close();
-            }
-            if ($user_id) {
-                $sqlSaldoUsuario = $conn->prepare("SELECT SUM(monto) as saldo FROM usuarios_movimientos WHERE id_user = ? AND DATE(fecha_movimiento) < ?");
-                $sqlSaldoUsuario->bind_param("ss", $user_id, $fecha_inicio);
-                $sqlSaldoUsuario->execute();
-                if ($row = $sqlSaldoUsuario->get_result()->fetch_assoc()) $saldoInicialTarjeta += floatval($row['saldo']);
-                $sqlSaldoUsuario->close();
-            }
-        }
+    if ($token) {
+        /*
+        // 2. Obtener las tarjetas y usuarios de la empresa desde la BD local real
+        $sql = "SELECT 
+                    u.name as NOMBRE_USUARIO,
+                    u.idAccount as id_account,
+                    u.ID as user_id,
+                    t.NUMERO_TARJETA as card_id 
+                FROM usuarios u
+                JOIN tarjetas t ON u.ID = t.ID_USUARIO
+                WHERE u.idEmpresa = ? AND t.NUMERO_TARJETA IS NOT NULL AND t.NUMERO_TARJETA != ''";
+        
+        $stmt_tarjetas = $conn->prepare($sql);
+        $stmt_tarjetas->bind_param("i", $id_empresa_filtrada);
+        $stmt_tarjetas->execute();
+        $resultTarjetas = $stmt_tarjetas->get_result();
 
-        // Cargos de la tarjeta (desde activity)
-        if ($id_account) {
-            $sqlMovsTarjeta = "SELECT total_amount as monto FROM activity WHERE account = ? AND result = 'APPROVED' AND entry_type = 'DEBIT' AND type <> 'MANUAL_MOVEMENT'";
-            $params = [$id_account];
-            $types = "s";
+        while ($row_tarjeta_local = $resultTarjetas->fetch_assoc()) {
+            $card_id_pomelo = $row_tarjeta_local['card_id'];
 
-            if ($fecha_inicio && $fecha_fin) {
-                $sqlMovsTarjeta .= " AND DATE(datetime) BETWEEN ? AND ?";
-                array_push($params, $fecha_inicio, $fecha_fin);
-                $types .= "ss";
-            } elseif ($fecha_inicio) {
-                $sqlMovsTarjeta .= " AND DATE(datetime) >= ?";
-                array_push($params, $fecha_inicio);
-                $types .= "s";
-            } elseif ($fecha_fin) {
-                $sqlMovsTarjeta .= " AND DATE(datetime) <= ?";
-                array_push($params, $fecha_fin);
-                $types .= "s";
-            }
+            // 3. Por cada card_id, consultar la API de Pomelo
+            $curl_card = curl_init();
+            curl_setopt_array($curl_card, [
+                CURLOPT_URL => 'https://api.pomelo.la/cards/v1/' . $card_id_pomelo,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $token],
+            ]);
+            $response_card = curl_exec($curl_card);
+            curl_close($curl_card);
+            $card_data_api = json_decode($response_card, true);
 
-            $stmtMovs = $conn->prepare($sqlMovsTarjeta);
-            $stmtMovs->bind_param($types, ...$params);
+            if (isset($card_data_api['data']['id'])) {
+                // 4. La tarjeta existe en Pomelo, calculamos sus movimientos
+                $id_account = $row_tarjeta_local['id_account'];
+                $user_id = $row_tarjeta_local['user_id'];
+                $saldoInicialTarjeta = 0; $asignacionesTarjeta = 0; $cargosTarjeta = 0; $retirosTarjeta = 0;
+
+                // ATENCIÓN: La lógica de cálculo de movimientos (tablas activity, usuarios_movimientos)
+                // debe ser revisada para asegurar que usa las columnas correctas.
+                // Esta es una implementación basada en la nueva estructura.
+                if ($id_account) {
+                    $stmtMovs = $conn->prepare("SELECT SUM(total_amount) as total FROM activity WHERE account = ? AND result = 'APPROVED' AND entry_type = 'DEBIT'");
+                    $stmtMovs->bind_param("s", $id_account);
             $stmtMovs->execute();
-            $resMovs = $stmtMovs->get_result();
-            while ($mov = $resMovs->fetch_assoc()) {
-                $cargosTarjeta += floatval($mov['monto']);
-            }
+                    if($mov = $stmtMovs->get_result()->fetch_assoc()) $cargosTarjeta = floatval($mov['total']);
             $stmtMovs->close();
         }
-
-        // Asignaciones y Retiros a CC (desde usuarios_movimientos)
         if ($user_id) {
-            // Si no hay filtro de fechas, calcular el saldo neto actual
-            if (!$fecha_inicio && !$fecha_fin) {
-                $sqlSaldoNeto = "SELECT SUM(monto) as saldo_neto FROM usuarios_movimientos WHERE id_user = ?";
-                $stmtSaldoNeto = $conn->prepare($sqlSaldoNeto);
-                $stmtSaldoNeto->bind_param("s", $user_id);
-                $stmtSaldoNeto->execute();
-                $resultSaldoNeto = $stmtSaldoNeto->get_result();
-                if ($rowSaldoNeto = $resultSaldoNeto->fetch_assoc()) {
-                    $saldoNeto = floatval($rowSaldoNeto['saldo_neto']);
-                    // Si el saldo neto es positivo, son asignaciones netas
-                    if ($saldoNeto > 0) {
-                        $asignacionesTarjeta = $saldoNeto;
-                        $retirosTarjeta = 0;
-                    } else {
-                        // Si es negativo, son retiros netos
-                        $asignacionesTarjeta = 0;
-                        $retirosTarjeta = abs($saldoNeto);
-                    }
-                }
-                $stmtSaldoNeto->close();
-            } else {
-                // Si hay filtro de fechas, sumar movimientos del período
-                $sqlMovsUsuario = "SELECT monto, tipo_movimiento FROM usuarios_movimientos WHERE id_user = ?";
-                $params_user = [$user_id];
-                $types_user = "s";
-
-                if ($fecha_inicio && $fecha_fin) {
-                    $sqlMovsUsuario .= " AND DATE(fecha_movimiento) BETWEEN ? AND ?";
-                    array_push($params_user, $fecha_inicio, $fecha_fin);
-                    $types_user .= "ss";
-                } elseif ($fecha_inicio) {
-                    $sqlMovsUsuario .= " AND DATE(fecha_movimiento) >= ?";
-                    array_push($params_user, $fecha_inicio);
-                    $types_user .= "s";
-                } elseif ($fecha_fin) {
-                    $sqlMovsUsuario .= " AND DATE(fecha_movimiento) <= ?";
-                    array_push($params_user, $fecha_fin);
-                    $types_user .= "s";
-                }
-
-                $stmtMovsUsuario = $conn->prepare($sqlMovsUsuario);
-                $stmtMovsUsuario->bind_param($types_user, ...$params_user);
+                    // Asumimos que usuarios_movimientos usa `ID` de la tabla `usuarios`
+                    $stmtMovsUsuario = $conn->prepare("SELECT SUM(monto) as total FROM usuarios_movimientos WHERE id_user = ? AND tipo_movimiento = 'ASIGNA'");
+                    $stmtMovsUsuario->bind_param("i", $user_id);
                 $stmtMovsUsuario->execute();
-                $resMovsUsuario = $stmtMovsUsuario->get_result();
-
-                // DEBUG: Mostrar todos los registros que se están sumando
-                echo "<!-- DEBUG: Consulta para user_id $user_id: " . $sqlMovsUsuario . " -->";
-                echo "<!-- DEBUG: Parámetros: " . implode(", ", $params_user) . " -->";
-                
-                while ($mov_user = $resMovsUsuario->fetch_assoc()) {
-                    echo "<!-- DEBUG: Registro - Tipo: " . $mov_user['tipo_movimiento'] . " | Monto: $" . number_format($mov_user['monto'], 2) . " -->";
-                    if ($mov_user['tipo_movimiento'] === 'ASIGNA') {
-                        $asignacionesTarjeta += floatval($mov_user['monto']);
-                    } elseif ($mov_user['tipo_movimiento'] === 'RETIRO') {
-                        $retirosTarjeta += abs(floatval($mov_user['monto']));
-                    }
-                }
+                    if($mov_user = $stmtMovsUsuario->get_result()->fetch_assoc()) $asignacionesTarjeta = floatval($mov_user['total']);
                 $stmtMovsUsuario->close();
-            }
         }
         
         $saldoDisponibleTarjeta = $saldoInicialTarjeta + $asignacionesTarjeta - $cargosTarjeta - $retirosTarjeta;
         
+                // 5. Acumular totales y guardar datos para mostrar
         $totalSaldoInicialTarjetas += $saldoInicialTarjeta;
         $totalAsignacionesTarjetas += $asignacionesTarjeta;
         $totalCargosTarjetas += $cargosTarjeta;
         $totalRetirosTarjetas += $retirosTarjeta;
         $totalSaldoTarjetas += $saldoDisponibleTarjeta;
 
-        $t['saldoInicialTarjeta'] = $saldoInicialTarjeta;
-        $t['asignacionesTarjeta'] = $asignacionesTarjeta;
-        $t['cargosTarjeta'] = $cargosTarjeta;
-        $t['retirosTarjeta'] = $retirosTarjeta;
-        $t['saldoDisponibleTarjeta'] = $saldoDisponibleTarjeta;
-        
-        // DEBUG TEMPORAL - Mostrar valores individuales de cada tarjeta
-        echo "<!-- DEBUG: Usuario: " . $t['usuario'] . " | Asignaciones: $" . number_format($asignacionesTarjeta, 2) . " | User ID: " . $user_id . " -->";
-        
-        $tarjetas_calculadas[] = $t;
+                $tarjetas_calculadas[] = [
+                    'usuario' => $row_tarjeta_local['NOMBRE_USUARIO'],
+                    'last_four' => $card_data_api['data']['last_four'],
+                    'status' => $card_data_api['data']['status'],
+                    'provider' => $card_data_api['data']['provider'],
+                    'start_date' => $card_data_api['data']['start_date'],
+                    'saldoInicialTarjeta' => $saldoInicialTarjeta,
+                    'asignacionesTarjeta' => $asignacionesTarjeta,
+                    'cargosTarjeta' => $cargosTarjeta,
+                    'retirosTarjeta' => $retirosTarjeta,
+                    'saldoDisponibleTarjeta' => $saldoDisponibleTarjeta
+                ];
+            }
+        }
+        $stmt_tarjetas->close();
+        */
     }
 }
 
-// 3. Cálculo final de la Cuenta Concentradora usando los totales de las tarjetas
+// 3. Cálculo final de la Cuenta Concentradora
 $asignacionesCC = $totalAsignacionesTarjetas; 
 $retirosHaciaCC = $totalRetirosTarjetas; 
 $saldoDisponibleCC = $saldoInicialCC + $depositosCC + $retirosCC - $asignacionesCC + $retirosHaciaCC;

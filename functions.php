@@ -6,7 +6,7 @@ function getDbConnection() {
     $servername = "localhost";
     $username = "root";
     $password = "";
-    $dbname = "finisterra"; // o finister
+    $dbname = "fisinter"; // Asegúrate que este es el nombre de tu BD en XAMPP
     $conn = new mysqli($servername, $username, $password, $dbname);
     if ($conn->connect_error) {
         die("Fallo de conexión: " . $conn->connect_error);
@@ -15,6 +15,7 @@ function getDbConnection() {
     // --- Fin bloque LOCAL ---
     */
 
+    
     // --- Para PRODUCCIÓN en AWS, usa este bloque ---
     // NOTA: Lo ideal es usar variables de entorno en lugar de credenciales directamente en el código.
     $host = "finister.cfeq6oo6ouvl.us-east-2.rds.amazonaws.com";

@@ -83,8 +83,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $stmt->close();
             break;
 
+        case 'desbloquear':
+            $stmt = $conn->prepare("UPDATE {$tableName} SET status = 'ACTIVE' WHERE id_ = ?");
+            $stmt->bind_param("i", $id);
+
+            if ($stmt->execute()) {
+                header("Location: ../usuarios.php?status=success_unblock");
+            } else {
+                echo "Error al desbloquear: " . $stmt->error;
+            }
+            $stmt->close();
+            break;
+
         case 'eliminar':
-            $stmt = $conn->prepare("DELETE FROM {$tableName} WHERE id_ = ?");
+            $stmt = $conn->prepare("UPDATE {$tableName} SET status = 'DELETED' WHERE id_ = ?");
             $stmt->bind_param("i", $id);
 
             if ($stmt->execute()) {

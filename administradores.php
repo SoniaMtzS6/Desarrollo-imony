@@ -18,32 +18,60 @@ $totalPages = 1;
 $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
 $size = 10;
 $idEmpresa = $_SESSION["usuario"]["id_empresa"] ?? 0;
+$perfil_session = $_SESSION["usuario"]["perfil"] ?? '';
 
-// Usaremos el código que proporcionaste como base para la llamada a producción
-$curl = curl_init();
+// Determinar el entorno
+$is_production = (strpos($_SERVER['HTTP_HOST'], 'elasticbeanstalk.com') !== false);
 
-curl_setopt_array($curl, array(
-  CURLOPT_URL => 'https://9kjot10cte.execute-api.us-east-2.amazonaws.com/dev/admin/list',
-  CURLOPT_RETURNTRANSFER => true,
-  CURLOPT_ENCODING => '',
-  CURLOPT_MAXREDIRS => 10,
-  CURLOPT_TIMEOUT => 30, // Pongo un timeout para evitar cargas infinitas
-  CURLOPT_FOLLOWLOCATION => true,
-  CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-  CURLOPT_CUSTOMREQUEST => 'GET', // Usando GET como en tu ejemplo
-  CURLOPT_POSTFIELDS => json_encode([ // Enviando el cuerpo como en tu ejemplo
-    "page" => $page,
-    "size" => $size,
-    "idEmpresa" => $idEmpresa // Enviamos el idEmpresa del usuario logueado
-  ]),
-  CURLOPT_HTTPHEADER => array(
-    'Content-Type: application/json'
-  ),
-));
+if ($is_production) {
+    // --- Código de PRODUCCIÓN (API) ---
+    $curl = curl_init();
+    $params = [
+        'page' => $page,
+        'size' => $size,
+        'filter[status][ne]' => 'DELETED' // Excluir eliminados
+    ];
+    if ($perfil_session !== "Superadministrador") {
+        $params['filter[idEmpresa]'] = $idEmpresa;
+    }
+    
+    $url = 'https://9kjot10cte.execute-api.us-east-2.amazonaws.com/dev/admin/list?' . http_build_query($params);
 
-$response = curl_exec($curl);
-$err = curl_error($curl);
-curl_close($curl);
+    curl_setopt_array($curl, array(
+      CURLOPT_URL => $url,
+      CURLOPT_RETURNTRANSFER => true,
+      CURLOPT_CUSTOMREQUEST => 'GET',
+    ));
+
+    $response = curl_exec($curl);
+    $err = curl_error($curl);
+    curl_close($curl);
+
+} else {
+    // --- Código LOCAL (Base de Datos Directa) ---
+    $conn = getDbConnection();
+    if ($conn->connect_error) {
+        die("Connection failed: " . $conn->connect_error);
+    }
+    
+    $where_clauses = ["a.status != 'DELETED'"];
+    if ($perfil_session !== 'Superadministrador') {
+        $where_clauses[] = "a.idEmpresa = " . intval($idEmpresa);
+    }
+    $where_sql = implode(' AND ', $where_clauses);
+
+    $total_query = "SELECT COUNT(*) as total FROM administradores a WHERE {$where_sql}";
+    $total_result = $conn->query($total_query);
+    $total_rows = $total_result->fetch_assoc()['total'];
+    $totalPages = ceil($total_rows / $size);
+    $offset = ($page - 1) * $size;
+
+    $query = "SELECT a.*, e.NOMBRE_EMPRESA as nombreEmpresa FROM administradores a LEFT JOIN empresas e ON a.idEmpresa = e.ID_EMPRESA WHERE {$where_sql} ORDER BY a.id DESC LIMIT {$size} OFFSET {$offset}";
+    $result = $conn->query($query);
+    $response = json_encode(['data' => $result->fetch_all(MYSQLI_ASSOC), 'totalPages' => $totalPages]);
+    $conn->close();
+    $err = false;
+}
 
 if ($err) {
     error_log("cURL Error #:" . $err);
@@ -53,37 +81,47 @@ if ($err) {
 
     if (isset($data['data']) && !empty($data['data'])) {
         $tabla = ""; // Limpiar la tabla antes de llenarla
-    $totalPages = $data['totalPages'] ?? 1;
+        $totalPages = $data['totalPages'] ?? 1;
 
         foreach ($data['data'] as $admin) {
-            $estado = ($admin['activo'] ?? 0) ? 
-                '<span class="badge bg-success custom-badge hstack justify-content-center p-0 ms-auto">Activo</span>' : 
-                '<span class="badge bg-danger custom-badge hstack justify-content-center p-0 ms-auto">Inactivo</span>';
+            $status = $admin['status'] ?? 'INACTIVE'; // Default a INACTIVE si no está definido
+            $statusBadge = '';
+            switch ($status) {
+                case 'ACTIVE':
+                    $statusBadge = '<span class="badge bg-success custom-badge">Activo</span>';
+                    break;
+                case 'BLOCKED':
+                    $statusBadge = '<span class="badge bg-warning custom-badge">Bloqueado</span>';
+                    break;
+                default:
+                    $statusBadge = '<span class="badge bg-secondary custom-badge">Inactivo</span>';
+                    break;
+            }
 
             // Validar la fecha de creación antes de usarla
             $fecha_formateada = 'N/A';
             if (!empty($admin['fecha_creacion'])) {
                 $fecha_formateada = date('d/m/Y', strtotime($admin['fecha_creacion']));
             }
-
-            $tabla .= '<tr>
-                    <td class="ps-0">
+        
+        $tabla .= '<tr>
+                <td class="ps-0">
                         <div class="hstack gap-2">
-                            <input class="form-check-input mt-0" type="checkbox" value="" aria-label="Checkbox for following text input">
+                            <input class="form-check-input mt-0" type="checkbox">
                             <label class="fs-3 fw-semibold text-dark">'.htmlspecialchars($admin['nombre']).'</label>
                         </div>
-                    </td>
+                </td>
                     <td><div class="d-flex justify-content-end">'.htmlspecialchars($admin['codigo_admin'] ?? 'N/A').'</div></td>
                     <td><div class="d-flex justify-content-end">'.htmlspecialchars($admin['email']).'</div></td>
                     <td>'.htmlspecialchars($admin['nombreEmpresa'] ?? 'N/A').'</td>
                     <td>'.htmlspecialchars($admin['perfil']).'</td>
                     <td>'.$fecha_formateada.'</td>
-                    <td>'.$estado.'</td>
-                    <td class="pe-0">
+                    <td><div class="d-flex justify-content-end">'.$statusBadge.'</div></td>
+                <td class="pe-0">
                         <a href="editadministrador.php?id='.htmlspecialchars($admin['id']).'" class="btn btn-primary d-flex align-items-center gap-1">Editar</a>
-                    </td>
-                </tr>';
-        }
+                </td>
+            </tr>';
+    }
     }
 }
 ?>
