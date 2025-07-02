@@ -34,6 +34,7 @@ if ($response) {
 }
 */
 
+//Código Sonia
 // Código local: cargar empresas desde la base de datos
 $empresa = '';
 try {

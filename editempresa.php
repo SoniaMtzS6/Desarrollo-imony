@@ -1,5 +1,4 @@
-<?php include 'functions.php'; ?>
-<?php
+<?php include 'functions.php';
 
 
 
@@ -132,7 +131,7 @@ $conn->close();
                     </div>
                     <div class="row">
                       <div class="col-md-6 mb-3">
-                        <label class="form-label" for="validationTooltip03">Pais</label>
+                        <label class="form-label" for="validationTooltip03">País</label>
                         <input type="text" class="form-control" id="validationTooltip03" placeholder="Pais" name="pais"  value="<?php echo htmlspecialchars($empresa['PAIS'] ?? ''); ?>"  required />
                         <div class="invalid-tooltip">
                           Por favor proporcionar la ciudad.
@@ -146,7 +145,7 @@ $conn->close();
                         </div>
                       </div>
                       <div class="col-md-3 mb-3">
-                        <label class="form-label" for="validationTooltip05">Codigo postal</label>
+                        <label class="form-label" for="validationTooltip05">Código postal</label>
                         <input type="text" class="form-control" id="validationTooltip05" placeholder="Zip" name="codigo" required  value="<?php echo htmlspecialchars($empresa['CODIGO_POSTAL'] ?? ''); ?>"  />
                         <div class="invalid-tooltip">
                           Por favor proporcionar el codigo postal.
@@ -192,7 +191,7 @@ $conn->close();
                             <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <label class="form-label" for="monto">Monto</label>
-                                    <input type="number" step="0.01" class="form-control" id="monto" name="monto" placeholder="0.00" required />
+                                    <input type="text"  class="form-control" id="monto" name="monto" placeholder="0.00" required />
                                     <div class="invalid-tooltip">
                                         Proporciona un monto.
                                     </div>
@@ -394,9 +393,36 @@ $conn->close();
         </div>
       </div>
       <script>
-  function handleColorTheme(e) {
-    document.documentElement.setAttribute("data-color-theme", e);
-  }
+      function handleColorTheme(e) {
+        document.documentElement.setAttribute("data-color-theme", e);
+      }
+
+      //Codigo Sonia
+  var input = document.getElementById('monto');
+
+  input.addEventListener('input', function(e) {
+      var value = e.target.value.replace(/[^0-9.]/g, '');  // Solo números y punto
+      var parts = value.split('.');
+
+      // Limitar a 2 decimales
+      if (parts[1]) {
+          parts[1] = parts[1].substring(0, 2);
+      }
+
+      // Formatear parte entera con comas
+      parts[0] = parts[0].replace(/^0+(?!$)/, ''); // Eliminar ceros a la izquierda
+      parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+      // Juntar partes y agregar símbolo $
+      e.target.value = '$' + parts.join('.');
+  });
+
+  // Limpiar máscara al enviar
+  input.closest('form').addEventListener('submit', function() {
+      input.value = input.value.replace(/[$,]/g, '');
+  });
+
+  //Fin codigo Sonia
 </script>
    
     </div>

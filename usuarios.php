@@ -17,6 +17,53 @@ if ($_SESSION["usuario"]["doblefactor"] !== "1") {
     exit;
 }
 
+//código Sonia
+// Obtener el ID del usuario y el session_id actual
+$idUsuario = $_SESSION["usuario"]["id"];
+$session_actual = session_id();
+
+// Establece el tiempo de inactividad permitido (en segundos)
+define('SESSION_TIMEOUT', 3600); // 10 minutos
+
+// Conectar a la base de datos
+$conn = getDbConnection();
+$stmt = $conn->prepare("SELECT session_token FROM administradores WHERE id = ?");
+$stmt->bind_param("i", $idUsuario);
+$stmt->execute();
+$res = $stmt->get_result();
+$stmt->close();
+
+// Función para generar un token único
+function generarSessionToken() {
+    return bin2hex(random_bytes(32));
+}
+
+// Al iniciar sesión o si no hay token, se genera uno nuevo
+if (!isset($_SESSION['session_token'])) {
+    $_SESSION['session_token'] = generarSessionToken();
+    $_SESSION['last_activity'] = time(); // Marca la última actividad
+}
+
+// Verifica la inactividad
+if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > SESSION_TIMEOUT)) {
+    // Token expirado por inactividad
+    // Limpiar token en base
+    $stmt = $conn->prepare("UPDATE administradores SET session_token = NULL WHERE id = ?");
+    $stmt->bind_param("i", $idUsuario);
+    $stmt->execute();
+    $stmt->close();
+    $conn->close();
+    session_unset();     // Limpia variables de sesión
+    session_destroy();   // Destruye la sesión
+    header("Location: index.php?session=expired");
+    exit;
+}
+
+// Si no expiró, actualiza el tiempo de última actividad
+$_SESSION['last_activity'] = time();
+
+//Fin código Sonia
+
 // Inicializar variables
 $tabla = "";
 $totalPages = 1;
@@ -29,7 +76,7 @@ $is_production = (strpos($_SERVER['HTTP_HOST'], 'elasticbeanstalk.com') !== fals
 
 if ($is_production) {
     // --- CÓDIGO DE PRODUCCIÓN (API) ---
-$curl = curl_init();
+/*$curl = curl_init();
 
     $base_url = "https://37kylcuth7.execute-api.us-east-2.amazonaws.com/DEV/user/api/v1";
     $params = [
@@ -119,8 +166,9 @@ curl_close($curl);
         }
     } else {
         $tabla = '<tr><td colspan="8" class="text-center">Error al cargar los usuarios</td></tr>';
-    }
+    }*/
 
+    //Codigo Sonia
 } else {
     // --- CÓDIGO LOCAL (Base de Datos Directa) ---
     $conn = getDbConnection();
@@ -191,7 +239,7 @@ curl_close($curl);
                     <td>'.$nombreEmpresa.'</td>
                     <td>'.date('d/m/Y', strtotime($userdate)).'</td>
                     <td>'.$statusBadge.'</td>
-                            <td><a href="asignartarjeta.php?id='.$userId.'" class="btn btn-primary d-flex align-items-center gap-1">Asignar</a></td>
+                            <td><a href="asignartarjeta.php?id='.$iduser.'" class="btn btn-primary d-flex align-items-center gap-1">Asignar</a></td>
                             <td class="pe-0"><a href="edituser.php?iduser='.$iduser.'&id='.$userId.'&acc='.$idAccount.'" class="btn btn-primary d-flex align-items-center gap-1">Ver</a></td>
                 </tr>';
     }
@@ -202,6 +250,7 @@ curl_close($curl);
     }
 }
 
+//Codigo Sonia
 ?>
 <!DOCTYPE html>
 <html lang="en" dir="ltr" data-bs-theme="ligth" data-color-theme="Blue_Theme" data-layout="vertical">
@@ -222,97 +271,146 @@ curl_close($curl);
     });
   </script>
 <?php endif; ?>
+<!--Codigo Sonia-->
+<?php if (isset($_GET['success']) && $_GET['success'] == 1): ?>
+<script>
+    window.addEventListener('DOMContentLoaded', function () {
+    var myModal = new bootstrap.Modal(document.getElementById('modalExitoCuenta'));
+        myModal.show();
+    });
+</script>
+<?php endif; ?>
+<!--fin Código Sonia-->
   <div class="preloader">
     <img src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/images/logos/favicon.png" alt="loader" class="lds-ripple img-fluid" />
   </div>
   <div id="main-wrapper">
-  <?php include 'header.php'; ?>
-      <div class="body-wrapper">
-        <div class="container-fluid">
-          <div class="mb-4">
-            <div class="row align-items-center">
-              <div class="col-md-6 col-lg-5">
-                <h4 class="mb-8 breadcrumb-title"> <span class="text-primary">Usuarios</span></h4>
-              </div>
-              <div class="col-md-6 col-lg-7">
-                <div class="d-flex flex-wrap flex-lg-nowrap gap-3 align-items-center flex-row justify-content-start justify-content-md-end">
-                  <a href="javascript:void(0)" class="btn bg-white border text-dark d-none d-lg-block fw-normal">Introduce los datos  <span class="text-primary fw-semibold ms-1 link-dark">Buscar</span></a>
-                  <a href="javascript:void(0)" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="bg-primary" data-bs-title="SERP & KD updated 21 hours ago." class="btn bg-white border text-dark d-lg-none"><span class="text-primary fw-semibold ms-1">Buscar</span></a>
-                  <a href="nuevouser.php" class="btn btn-primary d-flex align-items-center gap-2"><iconify-icon icon="solar:add-circle-line-duotone" class="fs-7"></iconify-icon>Agregar Usuarios</a>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="card mb-7">
-            <div class="card-body">
-              <div class="py-4">
-                <div class="d-flex gap-6 fw-bold align-items-center flex-lg-nowrap flex-wrap">
-                  <p class="fs-3 fw-bold text-dark mb-0">Acciones</p>
-                  <div class="dropdown">
-                    <button class="btn bg-light dropdown-toggle text-body-color d-flex align-items-center gap-2 fw-semibold" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                      <iconify-icon icon="solar:calendar-linear" class="fs-6"></iconify-icon>
-                     Seleccione
-                    </button>
-                    <ul class="dropdown-menu">
-                      <li><a class="dropdown-item" href="javascript:void(0)">Activar/desactivar</a></li>
-                      <li><a class="dropdown-item" href="javascript:void(0)">Eliminar</a></li>
-                    </ul>
+      <?php include 'header.php'; ?>
+          <div class="body-wrapper">
+            <div class="container-fluid">
+              <div class="mb-4">
+                <div class="row align-items-center">
+                  <div class="col-md-6 col-lg-5">
+                    <h4 class="mb-8 breadcrumb-title"> <span class="text-primary">Usuarios</span></h4>
                   </div>
-                  <button class="btn bg-light d-flex align-items-center gap-2">
-                    <span>Aplicar</span>
-                    <iconify-icon icon="solar:filter-line-duotone" class="fs-6"></iconify-icon>
-                  </button>
+                  <div class="col-md-6 col-lg-7">
+                    <div class="d-flex flex-wrap flex-lg-nowrap gap-3 align-items-center flex-row justify-content-start justify-content-md-end">
+                      <!--<a href="javascript:void(0)" class="btn bg-white border text-dark d-none d-lg-block fw-normal">Introduce los datos  <span class="text-primary fw-semibold ms-1 link-dark">Buscar</span></a>
+                      <a href="javascript:void(0)" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="bg-primary" data-bs-title="SERP & KD updated 21 hours ago." class="btn bg-white border text-dark d-lg-none"><span class="text-primary fw-semibold ms-1">Buscar</span></a>-->
+                        <!--código Sonia-->
+                        <div class="form-group">
+                            <label for="buscadorUser">Buscar</label><iconify-icon icon="i-solar:magnifer-bold" class="fs-6"></iconify-icon>
+                            <input type="text" id="buscadorUser" placeholder="Introduce los datos" class="btn btn-sm bg-white border text-dark d-lg-block fw-normal" />
+                            <!--<button type="button" class="btn btn-sm btn-primary" onclick="buscarEmp()">Buscar</button>-->
+                        </div>
+                        <!--Fin código Sonia-->
+                      <a href="nuevouser.php" class="btn btn-primary d-flex align-items-center gap-2"><iconify-icon icon="solar:add-circle-line-duotone" class="fs-7"></iconify-icon>Agregar Usuarios</a>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div class="table-responsive">
-                <table class="table mb-0 align-middle text-nowrap">
-                  <thead class="text-dark fs-4">
-                    <tr>
-                      <th class="align-top ps-0 w-30"><div class="d-flex align-items-center gap-2"><label for="keyword" class="fs-11 text-dark fw-medium">Nombre</label></div></th>
-                      <th class="align-top"><h6 class="fs-11 fw-medium mb-0 text-end">Código</h6></th>
-                      <th class="align-top"><h6 class="fs-11 fw-medium mb-0 text-end">Correo</h6></th>
-                      <th class="align-top"><h6 class="fs-11 fw-medium mb-0 text-end">Empresa</h6></th>
-                      <th class="align-top"><h6 class="fs-11 fw-medium mb-0 text-end">Fecha de creacion</h6></th>
-                      <th class="align-top"><h6 class="fs-11 fw-medium mb-0 text-end">Status</h6></th>
-                      <th class="align-top"><h6 class="fs-11 fw-medium mb-0 text-end">Asignar tarjeta</h6></th>
-                      <th class="align-top w-30 pe-0"><h6 class="fs-11 fw-medium mb-0">Edicion</h6></th>
-                    </tr>
-                  </thead>
-                  <tbody class="table-group-divider border-primary">
-                    <?php echo $tabla; ?>
-                  </tbody>
-                </table>
-                <div class="d-flex justify-content-center mt-3">
-                  <nav>
-                    <ul class="pagination">
-                      <?php for ($i = 0; $i < $totalPages; $i++): ?>
-                        <li class="page-item <?php if ($i == $page) echo 'active'; ?>">
-                          <a class="page-link" href="?page=<?php echo $i; ?>"><?php echo $i + 1; ?></a>
-                        </li>
-                      <?php endfor; ?>
-                    </ul>
-                  </nav>
+              <div class="card mb-7">
+                <div class="card-body">
+                  <div class="py-4">
+                    <div class="d-flex gap-6 fw-bold align-items-center flex-lg-nowrap flex-wrap">
+                      <p class="fs-3 fw-bold text-dark mb-0">Acciones</p>
+                      <div class="dropdown">
+                        <button class="btn bg-light dropdown-toggle text-body-color d-flex align-items-center gap-2 fw-semibold" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                          <iconify-icon icon="solar:calendar-linear" class="fs-6"></iconify-icon>
+                         Seleccione
+                        </button>
+                        <ul class="dropdown-menu">
+                          <li><a class="dropdown-item" href="javascript:void(0)">Activar/desactivar</a></li>
+                          <li><a class="dropdown-item" href="javascript:void(0)">Eliminar</a></li>
+                        </ul>
+                      </div>
+                      <button class="btn bg-light d-flex align-items-center gap-2">
+                        <span>Aplicar</span>
+                        <iconify-icon icon="solar:filter-line-duotone" class="fs-6"></iconify-icon>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="table-responsive">
+                    <table class="table mb-0 align-middle text-nowrap" id="tableUsers">
+                      <thead class="text-dark fs-4">
+                        <tr>
+                          <th class="align-top ps-0 w-30"><div class="d-flex align-items-center gap-2"><label for="keyword" class="fs-11 text-dark fw-medium">Nombre</label></div></th>
+                          <th class="align-top"><h6 class="fs-11 fw-medium mb-0 text-end">Código</h6></th>
+                          <th class="align-top"><h6 class="fs-11 fw-medium mb-0 text-end">Correo</h6></th>
+                          <th class="align-top"><h6 class="fs-11 fw-medium mb-0 text-end">Empresa</h6></th>
+                          <th class="align-top"><h6 class="fs-11 fw-medium mb-0 text-end">Fecha de creacion</h6></th>
+                          <th class="align-top"><h6 class="fs-11 fw-medium mb-0 text-end">Status</h6></th>
+                          <th class="align-top"><h6 class="fs-11 fw-medium mb-0 text-end">Asignar tarjeta</h6></th>
+                          <th class="align-top w-30 pe-0"><h6 class="fs-11 fw-medium mb-0">Edicion</h6></th>
+                        </tr>
+                      </thead>
+                      <tbody class="table-group-divider border-primary">
+                        <?php echo $tabla; ?>
+                      </tbody>
+                    </table>
+                    <div class="d-flex justify-content-center mt-3">
+                      <nav>
+                        <ul class="pagination">
+                          <?php for ($i = 0; $i < $totalPages; $i++): ?>
+                            <li class="page-item <?php if ($i == $page) echo 'active'; ?>">
+                              <a class="page-link" href="?page=<?php echo $i; ?>"><?php echo $i + 1; ?></a>
+                            </li>
+                          <?php endfor; ?>
+                        </ul>
+                      </nav>
+                    </div>
+                  </div>
                 </div>
+              </div>
+              <div class="text-center py-3">
+                <p class="mb-0">2024 Finister derechos</p>
               </div>
             </div>
           </div>
-          <div class="text-center py-3">
-            <p class="mb-0">2024 Finister derechos</p>
+          <div class="modal fade" id="empresaCreadaModal" tabindex="-1" aria-labelledby="empresaCreadaModalLabel" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header text-white"><h5 class="modal-title" id="empresaCreadaModalLabel">¡Éxito!</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+                <div class="modal-body">El usuario se ha creado correctamente.</div>
+                <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cerrar</button></div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-      <div class="modal fade" id="empresaCreadaModal" tabindex="-1" aria-labelledby="empresaCreadaModalLabel" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header text-white"><h5 class="modal-title" id="empresaCreadaModalLabel">¡Éxito!</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
-            <div class="modal-body">El usuario se ha creado correctamente.</div>
-            <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cerrar</button></div>
-          </div>
+        <div class="dark-transparent sidebartoggler"></div>
+
+        <!-- Modal de éxito cuenta asociada-->
+        <div class="modal fade" id="modalExitoCuenta" tabindex="-1" aria-labelledby="modalExitoCuentaLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header text-white"><h5 class="modal-title" id="modalExitoCuentaLabel">¡Éxito!</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+                    <div class="modal-body">Cuenta asociada correctamente.</div>
+                    <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">Cerrar</button></div>
+                </div>
+            </div>
         </div>
-      </div>
     </div>
-    <div class="dark-transparent sidebartoggler"></div>
-  </div>
+<!--Código Sonia-->
+    <script>
+        document.getElementById('buscadorUser').addEventListener('input', function() {
+            var texto = document.getElementById('buscadorUser').value.toLowerCase();
+            var filas = document.querySelectorAll('#tableUsers tbody tr');
+
+            filas.forEach(fila => {
+                var contenidoFila = fila.textContent.toLowerCase();
+                if (texto === '') {
+                    // Si el input está vacío, mostrar todo
+                    fila.style.display = '';
+                } else if (contenidoFila.includes(texto)) {
+                    fila.style.display = '';
+                } else {
+                    fila.style.display = 'none';
+                }
+            });
+        });
+
+    </script>
+<!--Código Sonia-->
   <script src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/libs/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/libs/simplebar/dist/simplebar.min.js"></script>
   <script src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/js/theme/theme.js"></script>

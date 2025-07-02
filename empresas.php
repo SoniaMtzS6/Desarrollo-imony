@@ -41,13 +41,17 @@ try {
                     </form>
                 </td>
                 <td>
-                    <div class="d-flex justify-content-end">'.number_format($empresa['MONTO_MAXIMO'], 2).'</div>
+                    <!--Codigo Sonia-->
+                    <div class="d-flex justify-content-end"><span>$ </span> '.number_format($empresa['MONTO_MAXIMO'], 2).'</div>
+                    <!--fin codigo Sonia-->
                 </td>
-                <td>'.number_format(0, 2).'</td>
+                <!--Codigo Sonia-->
+                <td><span>$</span>'.number_format(0, 2).'</td>
                 <td>'.number_format($empresa['NUMERO_TARJETAS']).'</td>
                 <td>
                     <p class="mb-0 fw-medium text-dark fs-3 text-end">'.number_format(0).'</p>
                 </td>
+                <!--fin codigo Sonia-->
                 <td>'.$status.'</td>
                 <td class="pe-0">
                     <a href="editempresa.php?idempresa='.$empresa['ID_EMPRESA'].'" class="btn btn-primary d-flex align-items-center gap-1">Editar</a>
@@ -147,11 +151,17 @@ if ($response) {
               </div>
               <div class="col-md-6 col-lg-7">
                 <div class="d-flex flex-wrap flex-lg-nowrap gap-3 align-items-center flex-row justify-content-start justify-content-md-end">
-                  <a href="javascript:void(0)" class="btn bg-white border text-dark d-none d-lg-block fw-normal">Introduce los datos  <span class="text-primary fw-semibold ms-1 link-dark">Buscar</span>
-                  </a>
-                  <a href="javascript:void(0)" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="bg-primary" data-bs-title="SERP & KD updated 21 hours ago." class="btn bg-white border text-dark d-lg-none">
-                    <span class="text-primary fw-semibold ms-1">Buscar</span>
-                  </a>
+                    <!--<a href="" class="btn bg-white border text-dark d-lg-block fw-normal">Introduce los datos  <span class="text-primary fw-semibold ms-1 link-dark">Buscar</span>
+                  </a>-->
+                    <!--<a href="javascript:void(0)" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="bg-primary" data-bs-title="SERP & KD updated 21 hours ago." class="btn bg-white border text-dark d-lg-none">
+                        <span class="text-primary fw-semibold ms-1">Buscar</span>
+                    </a>-->
+                    <!--Código Sonia-->
+                    <div class="form-group">
+                        <label for="buscador">Buscar</label><iconify-icon icon="i-solar:magnifer-bold" class="fs-6"></iconify-icon>
+                        <input type="text" id="buscador" placeholder="Introduce los datos" class="btn btn-sm bg-white border text-dark d-lg-block fw-normal" />
+                    </div>
+                    <!--Fin codigo Sonia-->
                   <a href="nuevaempresa.php" class="btn btn-primary d-flex align-items-center gap-2"><iconify-icon icon="solar:add-circle-line-duotone" class="fs-7"></iconify-icon>Agregar Empresa</a>
                 </div>
               </div>
@@ -185,7 +195,7 @@ if ($response) {
                 </div>
               </div>
               <div class="table-responsive">
-                <table class="table mb-0 align-middle text-nowrap">
+                <table class="table mb-0 align-middle text-nowrap" id="tablaEmp">
                   <thead class="text-dark fs-4">
                     <tr>
                       <th class="align-top ps-0 w-30">
@@ -263,6 +273,26 @@ if ($response) {
   function handleColorTheme(e) {
      document.documentElement.setAttribute("data-color-theme", e);
   }
+
+  //Codigo Sonia
+  document.getElementById('buscador').addEventListener('input', function() {
+      var texto = document.getElementById('buscador').value.toLowerCase();
+      var filas = document.querySelectorAll('#tablaEmp tbody tr');
+
+      filas.forEach(fila => {
+          var contenidoFila = fila.textContent.toLowerCase();
+          if (texto === '') {
+              // Si el input está vacío, mostrar todo
+              fila.style.display = '';
+          } else if (contenidoFila.includes(texto)) {
+              fila.style.display = '';
+          } else {
+              fila.style.display = 'none';
+          }
+      });
+  });
+
+  //Fin codigo Sonia
 </script>
     
     </div>

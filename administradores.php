@@ -3,13 +3,89 @@ session_start();
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
-
+include 'functions.php';
 // Validar que el usuario está en sesión.
 if (!isset($_SESSION["usuario"])) {
     header("Location: index.php");
     exit;
 }
 
+
+//Código Sonia
+// Obtener el ID del usuario y el session_id actual
+$idUsuario = $_SESSION["usuario"]["id"];
+$session_actual = session_id();
+
+// Establece el tiempo de inactividad permitido (en segundos)
+define('SESSION_TIMEOUT', 3600); // 10 minutos
+
+// Conectar a la base de datos
+$conn = getDbConnection();
+$stmt = $conn->prepare("SELECT session_token FROM administradores WHERE id = ?");
+$stmt->bind_param("i", $idUsuario);
+$stmt->execute();
+$res = $stmt->get_result();
+$stmt->close();
+
+// Función para generar un token único
+function generarSessionToken() {
+    return bin2hex(random_bytes(32));
+}
+
+// Al iniciar sesión o si no hay token, se genera uno nuevo
+if (!isset($_SESSION['session_token'])) {
+    $_SESSION['session_token'] = generarSessionToken();
+    $_SESSION['last_activity'] = time(); // Marca la última actividad
+}
+
+// Verifica la inactividad
+if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > SESSION_TIMEOUT)) {
+    // Token expirado por inactividad
+    // Limpiar token en base
+    $stmt = $conn->prepare("UPDATE administradores SET session_token = NULL WHERE id = ?");
+    $stmt->bind_param("i", $idUsuario);
+    $stmt->execute();
+    $stmt->close();
+    $conn->close();
+    session_unset();     // Limpia variables de sesión
+    session_destroy();   // Destruye la sesión
+    header("Location: index.php?session=expired");
+    exit;
+}
+
+// Si no expiró, actualiza el tiempo de última actividad
+$_SESSION['last_activity'] = time();
+
+if ($res->num_rows === 1) {
+    $row = $res->fetch_assoc();
+
+    if ($row['session_token'] !== $session_actual) {
+        // Token no coincide: sesión expirada o iniciada en otro dispositivo
+        // Limpiar token en base
+        $stmt = $conn->prepare("UPDATE administradores SET session_token = NULL WHERE id = ?");
+        $stmt->bind_param("i", $idUsuario);
+        $stmt->execute();
+        $stmt->close();
+        $conn->close();
+
+        session_unset();
+        session_destroy();
+        header("Location: index.php?error=token_expirado");
+        exit;
+    }
+
+} else {
+    // Usuario no encontrado, cerrar sesión
+    session_unset();
+    session_destroy();
+    header("Location: index.php?error=usuario_no_encontrado");
+    exit;
+}
+
+$conn->close();
+
+
+//fin código Sonia
 require_once 'functions.php';
 
 // Inicializar variables
@@ -25,7 +101,7 @@ $is_production = (strpos($_SERVER['HTTP_HOST'], 'elasticbeanstalk.com') !== fals
 
 if ($is_production) {
     // --- Código de PRODUCCIÓN (API) ---
-    $curl = curl_init();
+    /*$curl = curl_init();
     $params = [
         'page' => $page,
         'size' => $size,
@@ -45,7 +121,7 @@ if ($is_production) {
 
     $response = curl_exec($curl);
     $err = curl_error($curl);
-    curl_close($curl);
+    curl_close($curl);*/
 
 } else {
     // --- Código LOCAL (Base de Datos Directa) ---
@@ -120,6 +196,9 @@ if ($err) {
                 <td class="pe-0">
                         <a href="editadministrador.php?id='.htmlspecialchars($admin['id']).'" class="btn btn-primary d-flex align-items-center gap-1">Editar</a>
                 </td>
+                <!--<td class="pe-0">
+                        <a href="asignarempresa.php?id='.htmlspecialchars($admin['id']).'" class="btn btn-primary d-flex align-items-center gap-1">Asignar</a>
+                </td>-->
             </tr>';
     }
     }
@@ -170,11 +249,17 @@ if ($err) {
               </div>
               <div class="col-md-6 col-lg-7">
                 <div class="d-flex flex-wrap flex-lg-nowrap gap-3 align-items-center flex-row justify-content-start justify-content-md-end">
-                  <a href="javascript:void(0)" class="btn bg-white border text-dark d-none d-lg-block fw-normal">Introduce los datos  <span class="text-primary fw-semibold ms-1 link-dark">Buscar</span>
+                  <!--<a href="javascript:void(0)" class="btn bg-white border text-dark d-none d-lg-block fw-normal">Introduce los datos  <span class="text-primary fw-semibold ms-1 link-dark">Buscar</span>
                   </a>
                   <a href="javascript:void(0)" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-custom-class="bg-primary" data-bs-title="SERP & KD updated 21 hours ago." class="btn bg-white border text-dark d-lg-none">
                     <span class="text-primary fw-semibold ms-1">Buscar</span>
-                  </a>
+                  </a>-->
+                    <!--Código Sonia-->
+                    <div class="form-group">
+                        <label for="buscadorAdm">Buscar</label><iconify-icon icon="i-solar:magnifer-bold" class="fs-6"></iconify-icon>
+                        <input type="text" id="buscadorAdm" placeholder="Introduce los datos" class="btn btn-sm bg-white border text-dark d-lg-block fw-normal" />
+                    </div>
+                    <!--Fin codigo Sonia-->
                   <a href="nuevoadministrador.php" class="btn btn-primary d-flex align-items-center gap-2"><iconify-icon icon="solar:add-circle-line-duotone" class="fs-7"></iconify-icon>Agregar Administrador</a>
                 </div>
               </div>
@@ -208,7 +293,7 @@ if ($err) {
                 </div>
               </div>
               <div class="table-responsive">
-                <table class="table mb-0 align-middle text-nowrap">
+                <table class="table mb-0 align-middle text-nowrap" id="tableAdm">
                   <thead class="text-dark fs-4">
                     <tr>
                       <th class="align-top ps-0 w-30">
@@ -259,6 +344,27 @@ if ($err) {
       </div>
     </div>
     <div class="dark-transparent sidebartoggler"></div>
+
+<!--Código Sonia-->
+    <script>
+        document.getElementById('buscadorAdm').addEventListener('input', function() {
+            var texto = document.getElementById('buscadorAdm').value.toLowerCase();
+            var filas = document.querySelectorAll('#tableAdm tbody tr');
+
+            filas.forEach(fila => {
+                var contenidoFila = fila.textContent.toLowerCase();
+                if (texto === '') {
+                    // Si el input está vacío, mostrar todo
+                    fila.style.display = '';
+                } else if (contenidoFila.includes(texto)) {
+                    fila.style.display = '';
+                } else {
+                    fila.style.display = 'none';
+                }
+            });
+        });
+    </script>
+<!--Fin codigo Sonia-->
   <script src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/libs/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/libs/simplebar/dist/simplebar.min.js"></script>
   <script src="https://bootstrapdemos.adminmart.com/seodash/dist/assets/js/theme/theme.js"></script>

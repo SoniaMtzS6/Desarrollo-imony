@@ -14,7 +14,54 @@ if ($_SESSION["usuario"]["doblefactor"] !== "1") {
     exit;
 }
 
+//Código Sonia
+// Obtener el ID del usuario y el session_id actual
+$idUsuario = $_SESSION["usuario"]["id"];
+$session_actual = session_id();
+
+// Establece el tiempo de inactividad permitido (en segundos)
+define('SESSION_TIMEOUT', 3600); // 10 minutos
+
 require_once 'functions.php';
+
+// Conectar a la base de datos
+$conn = getDbConnection();
+$stmt = $conn->prepare("SELECT session_token FROM administradores WHERE id = ?");
+$stmt->bind_param("i", $idUsuario);
+$stmt->execute();
+$res = $stmt->get_result();
+$stmt->close();
+
+// Función para generar un token único
+function generarSessionToken() {
+    return bin2hex(random_bytes(32));
+}
+
+// Al iniciar sesión o si no hay token, se genera uno nuevo
+if (!isset($_SESSION['session_token'])) {
+    $_SESSION['session_token'] = generarSessionToken();
+    $_SESSION['last_activity'] = time(); // Marca la última actividad
+}
+
+// Verifica la inactividad
+if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > SESSION_TIMEOUT)) {
+    // Token expirado por inactividad
+    // Limpiar token en base
+    $stmt = $conn->prepare("UPDATE administradores SET session_token = NULL WHERE id = ?");
+    $stmt->bind_param("i", $idUsuario);
+    $stmt->execute();
+    $stmt->close();
+    $conn->close();
+    session_unset();     // Limpia variables de sesión
+    session_destroy();   // Destruye la sesión
+    header("Location: index.php?session=expired");
+    exit;
+}
+
+// Si no expiró, actualiza el tiempo de última actividad
+$_SESSION['last_activity'] = time();
+
+//Fin código Sonia
 
 /* Código de PRODUCCIÓN comentado
 $curl = curl_init();
@@ -66,6 +113,9 @@ if ($response) {
 }
 */
 
+
+
+//Código Sonia
 // Código local para obtener empresas
 try {
     $conn = getDbConnection();
@@ -102,6 +152,8 @@ try {
 }
 
 $codigo = mt_rand(10000000, 99999999);
+
+//Fin cóidgo sonia
 
 ?>
 

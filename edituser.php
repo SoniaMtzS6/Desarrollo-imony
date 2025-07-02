@@ -15,6 +15,53 @@ if ($_SESSION["usuario"]["doblefactor"] !== "1") {
     exit;
 }
 
+//Código Sonia
+// Obtener el ID del usuario y el session_id actual
+$idUsuario = $_SESSION["usuario"]["id"];
+$session_actual = session_id();
+
+// Establece el tiempo de inactividad permitido (en segundos)
+define('SESSION_TIMEOUT', 3600); // 10 minutos
+
+// Conectar a la base de datos
+$conn = getDbConnection();
+$stmt = $conn->prepare("SELECT session_token FROM administradores WHERE id = ?");
+$stmt->bind_param("i", $idUsuario);
+$stmt->execute();
+$res = $stmt->get_result();
+$stmt->close();
+
+// Función para generar un token único
+function generarSessionToken() {
+    return bin2hex(random_bytes(32));
+}
+
+// Al iniciar sesión o si no hay token, se genera uno nuevo
+if (!isset($_SESSION['session_token'])) {
+    $_SESSION['session_token'] = generarSessionToken();
+    $_SESSION['last_activity'] = time(); // Marca la última actividad
+}
+
+// Verifica la inactividad
+if (isset($_SESSION['last_activity']) && (time() - $_SESSION['last_activity'] > SESSION_TIMEOUT)) {
+    // Token expirado por inactividad
+    // Limpiar token en base
+    $stmt = $conn->prepare("UPDATE administradores SET session_token = NULL WHERE id = ?");
+    $stmt->bind_param("i", $idUsuario);
+    $stmt->execute();
+    $stmt->close();
+    $conn->close();
+    session_unset();     // Limpia variables de sesión
+    session_destroy();   // Destruye la sesión
+    header("Location: index.php?session=expired");
+    exit;
+}
+
+// Si no expiró, actualiza el tiempo de última actividad
+$_SESSION['last_activity'] = time();
+
+//Fin código Sonia
+
 $id="";
 $acc="";
 $carid="";
@@ -35,7 +82,8 @@ if (isset($_GET['id'])) {
   echo "No se proporcionó un ID en la URL.";
 }
 
-$curl = curl_init();
+//PRODUCTIVO
+/*$curl = curl_init();
 
 curl_setopt_array($curl, array(
   CURLOPT_URL => 'https://vdn0w81bc0.execute-api.us-east-2.amazonaws.com/dev/card/api/v1/?filter[user_id]='.$id,
@@ -154,6 +202,9 @@ if ($response) {
                         
                         }
                     }
+
+
+
                 
 $curl = curl_init();
 
@@ -259,11 +310,123 @@ $curl = curl_init();
       }  
     
     
-    }
+    }*/
 
 
-    
-    
+//Info de tarjetas
+//LOCAL
+$conn = getDbConnection();
+
+$query = "SELECT * FROM tarjetas_local WHERE user_id = ?";
+$stmt = $conn->prepare($query);
+$stmt->bind_param("i", $id);
+$stmt->execute();
+
+$res = $stmt->get_result();
+
+$tarjetascliente = '';
+while ($row = $res->fetch_assoc()) {
+    // Simulamos el pan con el card_id si no tienes campo pan separado
+    $pan = chunk_split($row['card_id'], 4, ' ');
+
+    // Usamos start_date o agrega expiration_date si lo tienes
+    $expiration = $row['start_date'];
+    $start_date = $row['start_date'];
+    $provider = $row['provider'];
+    $status = $row['status'];
+
+    $tarjetascliente .= '
+    <br>
+    <div class="d-flex align-items-center justify-content-between mt-7">
+      <div class="d-flex align-items-center gap-3">
+        <div class="text-bg-light rounded-1 p-6 d-flex align-items-center justify-content-center">
+          <i class="ti text-dark d-block fs-7" width="22" height="22"></i>
+        </div>
+        <div>
+          <h5 class="fs-4 fw-semibold">'.$provider.'</h5>
+          <p class="mb-0 text-dark">'.$pan.'</p>
+          <p class="mb-0 text-dark">'.$expiration.'</p>
+        </div>
+      </div>
+      <a class="text-dark fs-6 d-flex align-items-center justify-content-center bg-transparent p-2 fs-4 rounded-circle" href="javascript:void(0)" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Edit">
+      </a>
+    </div>';
+}
+
+$stmt->close();
+
+// Luego imprime $tarjetascliente donde lo necesites
+echo $tarjetascliente;
+
+
+//Asociar cuenta
+$conn = getDbConnection();
+
+$query = "SELECT * FROM accounts_local WHERE id = ?";
+$stmt = $conn->prepare($query);
+$stmt->bind_param("s", $acc);
+$stmt->execute();
+
+$res = $stmt->get_result();
+if ($row = $res->fetch_assoc()) {
+    $balance = $row['balance'];
+    $status = $row['status'];
+    $currency = $row['currency'];
+
+    $tarjetascliente .= '
+    <div class="d-flex align-items-center gap-3">
+      <form method="POST" action="servicios/configuraciontarjeta.php"> 
+          <input type="hidden" class="form-control" name="card" value="'.$carid.'">
+          <input type="hidden" class="form-control" name="usr" value="'.$id.'">
+          <input type="hidden" class="form-control" name="acc" value="'.$acc.'">
+          <button type="submit" class="btn bg-danger-subtle text-danger" name="action" value="asociar">Asociar cuenta</button>
+      </form>
+    </div>';
+} else {
+    $hidden = "hidden";
+}
+
+$stmt->close();
+
+//API AWS de la actividad
+$conn = getDbConnection();
+
+$query = "SELECT merchant_name, total_amount, created_at, origin, process_type 
+          FROM activity 
+          WHERE account = ?";
+$stmt = $conn->prepare($query);
+$stmt->bind_param("s", $acc);
+$stmt->execute();
+
+$res = $stmt->get_result();
+
+$compra = '';
+while ($row = $res->fetch_assoc()) {
+    $totalAmount = $row['total_amount'] ?? '';
+    $createdAt = $row['created_at'] ?? '';
+    $origin = $row['origin'] ?? '';
+    $processType = $row['process_type'] ?? '';
+    $merchantName = $row['merchant_name'] ?? 'Sin nombre de comercio';
+
+    $compra .= '<div class="d-flex align-items-center justify-content-between mb-4">
+        <div class="d-flex align-items-center gap-3">
+          <div class="text-bg-light rounded-1 p-6 d-flex align-items-center justify-content-center">
+            <i class="ti text-dark d-block fs-7" width="22" height="22"></i>
+          </div>
+          <div>
+            <h5 class="fs-4 fw-semibold">'.$merchantName.' '.$processType.' '.$origin.'</h5>
+            <p class="mb-0">Realizada: '.$createdAt.'</p>
+          </div>
+        </div>
+        <div class="form-check form-switch mb-0">
+        <!--Código Sonia-->
+          <p class="mb-0">$ ' . number_format($totalAmount, 2, '.', ',') . '</p>
+          <!--Fin codigo Sonia-->
+        </div>
+      </div>';
+}
+
+$stmt->close();
     
     
 
@@ -498,8 +661,9 @@ if($_SESSION["usuario"]["perfil"]==="Superadministrador"){
                   </div>
                               <div>
                                 <p class="mb-0">Pesos Mexicanos <?php echo $currency; ?></p>
-                                <h5 class="fs-4 fw-semibold">$ <?php echo $balance; ?></h5>
-                </div>
+                                  <!--Código Sonia-->
+                                <h5 class="fs-4 fw-semibold">$ <?php echo number_format($balance, 2, '.', ','); ?></h5>
+                                <!--Fin codigo-->
                             </div>
                             <a class="text-dark fs-6 d-flex align-items-center justify-content-center bg-transparent p-2 fs-4 rounded-circle" href="javascript:void(0)" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Download">
                               <!-- <i class="ti ti-download"></i> -->
@@ -528,7 +692,9 @@ if($_SESSION["usuario"]["perfil"]==="Superadministrador"){
                               </div>
                           <div>
                                 <p class="mb-0">Monto asignado</p>
-                                <h5 class="fs-4 fw-semibold">$ <?php echo number_format($balance); ?></h5>
+                              <!--Código Sonia-->
+                                <h5 class="fs-4 fw-semibold">$ <?php echo number_format($balance, 2, '.', ','); ?></h5>
+                              <!--fin codigo sonia-->
                           </div>
                         </div>
                             <a class="text-dark fs-6 d-flex align-items-center justify-content-center bg-transparent p-2 fs-4 rounded-circle" href="javascript:void(0)" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Add">
@@ -571,7 +737,9 @@ if($_SESSION["usuario"]["perfil"]==="Superadministrador"){
                                       </div>
                                       <div>
                                         <p class="mb-0">Monto</p>
-                                        <input type="text" class="form-control" name="monto" placeholder="$" placeholder="$0.0" required="">
+                                          <!--Código Sonia-->
+                                        <input type="text" class="form-control" name="monto" placeholder="$" placeholder="$0.0" required="" id="monto-tarjeta-asig">
+                                        <!--Fin código Sonia-->
                                         <input type="hidden" class="form-control" name="usr" value="<?php echo $id;?>">
                                         <input type="hidden" class="form-control" name="acc" value="<?php echo $acc;?>">
                                       </div>
@@ -595,7 +763,8 @@ if($_SESSION["usuario"]["perfil"]==="Superadministrador"){
                       <div class="card border shadow-none">
                         <div class="card-body p-4">
                           <h4 class="card-title">Tarjetas asignadas</h4>
-                          <p class="card-subtitle"><?php echo $start_date; ?></p>
+                          <!--<p class="card-subtitle"><php echo $start_date; ?></p>-->
+                            <p class="card-subtitle"><php? echo $expiration; ?></p>
                          
                           <?php echo $tarjetascliente; ?>
                           </div>
@@ -946,6 +1115,33 @@ if($_SESSION["usuario"]["perfil"]==="Superadministrador"){
           });
       }
   });
+
+   //Código Sonia
+  var input = document.getElementById('monto-tarjeta-asig');
+
+  input.addEventListener('input', function(e) {
+      var value = e.target.value.replace(/[^0-9.]/g, '');  // Solo números y punto
+      var parts = value.split('.');
+
+      // Limitar a 2 decimales
+      if (parts[1]) {
+          parts[1] = parts[1].substring(0, 2);
+      }
+
+      // Formatear parte entera con comas
+      parts[0] = parts[0].replace(/^0+(?!$)/, ''); // Eliminar ceros a la izquierda
+      parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+      // Juntar partes y agregar símbolo $
+      e.target.value = '$' + parts.join('.');
+  });
+
+  // Limpiar máscara al enviar
+  input.closest('form').addEventListener('submit', function() {
+      input.value = input.value.replace(/[$,]/g, '');
+  });
+
+  //Fin código sonia
 </script>
 
   <!-- solar icons -->
