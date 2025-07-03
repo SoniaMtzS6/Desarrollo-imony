@@ -31,6 +31,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if ($resultado->num_rows === 1) {
         $usuario = $resultado->fetch_assoc();
 
+        // Verificar si ya tiene un session_token activo
+        if (!is_null($usuario["session_token"])) {
+            // Ya hay una sesión activa
+            echo "<p>Ya hay una sesión activa para este usuario. Por favor cierre la sesión anterior.</p>";
+            $conn->close();
+            exit;
+        }
+
         // Validar la contraseña usando password_verify
         //if (password_verify($password, $usuario["password"])) {
         if ($password == $usuario["password"]) {
