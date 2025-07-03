@@ -31,6 +31,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if ($resultado->num_rows === 1) {
         $usuario = $resultado->fetch_assoc();
 
+        //Código Sonia
         // Verificar si ya tiene un session_token activo
         if (!is_null($usuario["session_token"])) {
             // Ya hay una sesión activa
@@ -38,6 +39,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             $conn->close();
             exit;
         }
+
+        //Fin código Sonia
 
         // Validar la contraseña usando password_verify
         //if (password_verify($password, $usuario["password"])) {
