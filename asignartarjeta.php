@@ -2,7 +2,7 @@
 include 'functions.php';
 
 $id = $_GET['id'] ?? null;
-//Código Agregado
+//Código Agregado es el modal para la asignación de la tarjeta
 $showModal = isset($_GET['success']) && $_GET['success'] == 1;
 //Fin código agregado
 
